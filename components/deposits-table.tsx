@@ -58,7 +58,6 @@ export default function DepositsTable() {
 
   // today summary
   const loadToday = async () => {
-    // hari ini di Jakarta
     const now = new Date();
     const y = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }); // yyyy-mm-dd
     const s = startOfDayJakartaISO(y);
@@ -153,13 +152,28 @@ export default function DepositsTable() {
   const [delOpen, setDelOpen] = useState(false);
   const [delNote, setDelNote] = useState("");
   const [delRow, setDelRow] = useState<DepositRow | null>(null);
+  const [delBank, setDelBank] = useState<{
+    bank_code: string;
+    account_name: string;
+    account_no: string;
+  } | null>(null);
 
-  const openDelete = (r: DepositRow) => {
+  const openDelete = async (r: DepositRow) => {
     setDelRow(r);
     setDelNote("");
     setDelOpen(true);
+    setDelBank(null);
+    const { data: b } = await supabase
+      .from("banks")
+      .select("bank_code, account_name, account_no")
+      .eq("id", r.bank_id)
+      .single();
+    if (b) setDelBank(b as any);
   };
-  const closeDelete = () => setDelOpen(false);
+  const closeDelete = () => {
+    setDelOpen(false);
+    setDelBank(null);
+  };
 
   const submitDelete = async () => {
     if (!delRow) return;
@@ -260,7 +274,8 @@ export default function DepositsTable() {
               <th className="text-left w-24">ID</th>
               <th className="text-left min-w-[220px]">Lead</th>
               <th className="text-left min-w-[180px]">Player</th>
-              <th className="text-right w-32">Amount</th>
+              {/* Amount rata kiri */}
+              <th className="text-left w-32">Amount</th>
               <th className="text-left w-52">Tgl</th>
               <th className="text-left w-32">By</th>
               <th className="text-left w-24">Deleted?</th>
@@ -284,7 +299,8 @@ export default function DepositsTable() {
                     {r.lead_name_snapshot ?? "-"}
                   </td>
                   <td>{r.username_snapshot}</td>
-                  <td className="text-right">{formatAmount(r.amount_gross)}</td>
+                  {/* Amount rata kiri */}
+                  <td className="text-left">{formatAmount(r.amount_gross)}</td>
                   <td>
                     {new Date(r.txn_at_final).toLocaleString("id-ID", {
                       timeZone: "Asia/Jakarta",
@@ -320,21 +336,21 @@ export default function DepositsTable() {
         <nav className="inline-flex items-center gap-1 text-sm select-none">
           <button
             onClick={() => {
-              if (!canPrev) return;
+              if (page <= 1) return;
               setPage(1);
               load(1);
             }}
-            disabled={!canPrev}
+            disabled={page <= 1}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             First
           </button>
           <button
             onClick={() => {
-              if (!canPrev) return;
+              if (page <= 1) return;
               load(page - 1);
             }}
-            disabled={!canPrev}
+            disabled={page <= 1}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Previous
@@ -344,20 +360,20 @@ export default function DepositsTable() {
           </span>
           <button
             onClick={() => {
-              if (!canNext) return;
+              if (page >= totalPages) return;
               load(page + 1);
             }}
-            disabled={!canNext}
+            disabled={page >= totalPages}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Next
           </button>
           <button
             onClick={() => {
-              if (!canNext) return;
+              if (page >= totalPages) return;
               load(totalPages);
             }}
-            disabled={!canNext}
+            disabled={page >= totalPages}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Last
@@ -387,12 +403,24 @@ export default function DepositsTable() {
               <table className="table-grid w-full">
                 <tbody>
                   <tr>
-                    <td className="w-40">Player</td>
+                    <td className="w-40">Bank Penerima</td>
+                    <td>
+                      {delBank
+                        ? `[${delBank.bank_code}] ${delBank.account_name} - ${delBank.account_no}`
+                        : "Loading..."}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Player</td>
                     <td>{delRow.username_snapshot}</td>
                   </tr>
                   <tr>
                     <td>Jumlah</td>
                     <td>{formatAmount(delRow.amount_gross)}</td>
+                  </tr>
+                  <tr>
+                    <td>Direct Fee</td>
+                    <td>{formatAmount(delRow.fee_direct_amount)}</td>
                   </tr>
                   <tr>
                     <td>Tgl Transaksi</td>
