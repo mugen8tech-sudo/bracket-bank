@@ -9,6 +9,7 @@ export default async function DepositDetailPage({ params }: { params: { id: stri
   const supabase = createServerComponentClient({ cookies });
   const id = Number(params.id);
 
+  // ambil deposit
   const { data: dep, error } = await supabase
     .from("deposits")
     .select("*")
@@ -19,11 +20,30 @@ export default async function DepositDetailPage({ params }: { params: { id: stri
     return <div className="rounded border bg-white p-4">Deposit not found.</div>;
   }
 
+  // bank penerima
   const { data: bank } = await supabase
     .from("banks")
     .select("bank_code, account_name, account_no")
     .eq("id", dep.bank_id)
     .single();
+
+  // nama tenant (website)
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", dep.tenant_id)
+    .single();
+
+  // nama user pembuat (profiles.full_name)
+  let createdByName: string | null = dep.created_by;
+  if (dep.created_by) {
+    const { data: p } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", dep.created_by)
+      .single();
+    createdByName = p?.full_name ?? dep.created_by;
+  }
 
   return (
     <div className="space-y-4">
@@ -41,8 +61,8 @@ export default async function DepositDetailPage({ params }: { params: { id: stri
             <tr><td>Net</td><td>{formatAmount(dep.amount_net)}</td></tr>
             <tr><td>Transaction Time</td><td>{new Date(dep.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td></tr>
             <tr><td>Player</td><td>{dep.username_snapshot}</td></tr>
-            <tr><td>Website</td><td>Tenant</td></tr>
-            <tr><td>By</td><td>{dep.created_by ?? "-"}</td></tr>
+            <tr><td>Website</td><td>{tenant?.name ?? "-"}</td></tr>
+            <tr><td>By</td><td>{createdByName ?? "-"}</td></tr>
             <tr><td>Deleted?</td><td>{dep.is_deleted ? "YES" : "NO"}</td></tr>
             {dep.is_deleted && (
               <>
