@@ -6,7 +6,6 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  // refresh session bila perlu
   const { data: { session } } = await supabase.auth.getSession();
 
   const isAuthPage = req.nextUrl.pathname.startsWith("/users/sign_in");
