@@ -14,8 +14,17 @@ type BankRow = {
   is_active: boolean;
   is_pulsa: boolean;
   direct_fee_enabled: boolean;
-  direct_fee_percent: string | number;
-  balance: string | number;
+  direct_fee_percent: number;
+  balance: number;
+};
+
+type LeadLite = {
+  id: number;
+  username: string | null;
+  name: string | null;
+  bank: string | null;
+  bank_name: string | null;
+  bank_no: string | null;
 };
 
 const BANK_CODES = [
@@ -24,117 +33,207 @@ const BANK_CODES = [
   "LINKAJA","SAKUKU","OTHER"
 ];
 
+function toEnNumber(input: string) {
+  const cleaned = input.replace(/[^0-9.]/g, "");
+  const parts = cleaned.split(".");
+  const int = parts[0] || "0";
+  const frac = parts[1]?.slice(0, 2) ?? "";
+  return Number(frac ? `${int}.${frac}` : int);
+}
+
+function nowLocalDatetimeValue() {
+  // yyyy-MM-ddTHH:mm (for input[type=datetime-local])
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function BanksTable() {
   const supabase = supabaseBrowser();
 
   const [rows, setRows] = useState<BankRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tenantName, setTenantName] = useState<string>("");
+  const [tenantCredit, setTenantCredit] = useState<number>(0);
 
-  // ===== modal state =====
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    bank_code: "BCA",
-    account_name: "",
-    account_no: "",
-    is_pulsa: false,
-    direct_fee_enabled: false,
-    direct_fee_percent: "0.00",
-  });
+  // ====== setting potongan langsung -> dampak credit tenant ======
+  const [showSetting, setShowSetting] = useState(false);
+  const [hitCredit, setHitCredit] = useState<boolean>(true);
 
-  const closeModal = useCallback(() => setShowForm(false), []);
-  const openModal = () => setShowForm(true);
+  // ====== DP modal state ======
+  const [showDP, setShowDP] = useState(false);
+  const [dpBank, setDpBank] = useState<BankRow | null>(null);
+  const [dpOpenedISO, setDpOpenedISO] = useState<string>("");
+  const [dpTxnFinal, setDpTxnFinal] = useState<string>(nowLocalDatetimeValue());
+  const [dpAmountStr, setDpAmountStr] = useState<string>("");
+  const [dpPromo, setDpPromo] = useState<string>("");
+  const [dpDesc, setDpDesc] = useState<string>("");
+  const [leadQuery, setLeadQuery] = useState<string>("");
+  const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
+  const [leadPicked, setLeadPicked] = useState<LeadLite | null>(null);
 
-  // close modal via ESC
+  const closeDP = useCallback(() => setShowDP(false), []);
+  const openDPFor = (b: BankRow) => {
+    setDpBank(b);
+    setShowDP(true);
+    setDpOpenedISO(new Date().toISOString());  // jejak waktu saat modal dibuka (UTC)
+    setDpTxnFinal(nowLocalDatetimeValue());    // default ke waktu lokal
+    setDpAmountStr("");
+    setDpPromo("");
+    setDpDesc("");
+    setLeadQuery("");
+    setLeadOptions([]);
+    setLeadPicked(null);
+  };
+
+  // ESC close (DP & Setting)
   useEffect(() => {
-    if (!showForm) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeModal(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showDP) closeDP();
+        if (showSetting) setShowSetting(false);
+      }
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showForm, closeModal]);
+  }, [showDP, showSetting, closeDP]);
 
   const load = async () => {
     setLoading(true);
 
-    // Ambil tenant untuk label Website
+    // tenant & credit
     const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof } = await supabase.from("profiles")
-      .select("tenant_id").eq("user_id", user?.id).single();
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", user?.id)
+      .single();
 
     if (prof?.tenant_id) {
       const { data: tenant } = await supabase
-        .from("tenants").select("name").eq("id", prof.tenant_id).single();
+        .from("tenants")
+        .select("name, credit_balance")
+        .eq("id", prof.tenant_id)
+        .single();
       setTenantName(tenant?.name ?? "");
+      setTenantCredit(tenant?.credit_balance ?? 0);
+
+      // load setting potongan -> credit
+      const { data: setting } = await supabase
+        .from("tenant_settings")
+        .select("bank_direct_fee_hits_credit")
+        .eq("tenant_id", prof.tenant_id)
+        .maybeSingle();
+      setHitCredit(setting?.bank_direct_fee_hits_credit ?? true);
     }
 
-    // Ambil seluruh bank milik tenant (tanpa pagination)
+    // banks
     const { data, error } = await supabase
       .from("banks")
       .select("*")
       .order("id", { ascending: false });
 
     setLoading(false);
-    if (error) {
-      alert(error.message);
-    } else {
-      setRows((data as BankRow[]) ?? []);
-    }
+    if (error) alert(error.message);
+    else setRows((data as BankRow[]) ?? []);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  const save = async () => {
-    // Validasi
-    if (!form.account_name.trim()) { alert("Nama rekening wajib diisi."); return; }
-    if (!form.account_no.trim())   { alert("No rekening wajib diisi."); return; }
-    if (form.direct_fee_enabled) {
-      const v = Number(form.direct_fee_percent);
-      if (!(v > 0)) { alert("% potongan langsung harus > 0"); return; }
+  // cari lead by username
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!showDP) return;
+      const q = leadQuery.trim();
+      if (!q) { setLeadOptions([]); return; }
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, username, name, bank, bank_name, bank_no")
+        .ilike("username", `%${q}%`)
+        .limit(10);
+      if (!active) return;
+      if (error) { console.error(error); return; }
+      setLeadOptions((data as LeadLite[]) ?? []);
+    })();
+    return () => { active = false; };
+  }, [leadQuery, showDP, supabase]);
+
+  const submitDP = async () => {
+    if (!dpBank) return;
+    if (!leadPicked || !leadPicked.username) {
+      alert("Pilih Player (username) lebih dulu.");
+      return;
+    }
+    const gross = toEnNumber(dpAmountStr);
+    if (!(gross > 0)) {
+      alert("Amount harus lebih dari 0.");
+      return;
     }
 
-    // tenant_id dari profile
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof, error: eProf } = await supabase
-      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
-    if (eProf) { alert(eProf.message); return; }
+    // parse datetime-local ke ISO
+    const txnFinalISO = new Date(dpTxnFinal).toISOString();
 
-    const payload = {
-      tenant_id: prof?.tenant_id,
-      bank_code: form.bank_code,
-      account_name: form.account_name.trim(),
-      account_no: form.account_no.trim(),
-      is_pulsa: !!form.is_pulsa,
-      direct_fee_enabled: !!form.direct_fee_enabled,
-      direct_fee_percent: form.direct_fee_enabled ? Number(form.direct_fee_percent) : 0,
-      usage_type: "neutral",   // default, diubah dari Bank Management nanti
-      is_active: true,
-      balance: 0
-    };
+    const { data, error } = await supabase.rpc("perform_deposit", {
+      p_bank_id: dpBank.id,
+      p_lead_id: leadPicked.id,
+      p_username: leadPicked.username,
+      p_amount_gross: gross,
+      p_txn_at_opened: dpOpenedISO,
+      p_txn_at_final: txnFinalISO,
+      p_promo_code: dpPromo || null,
+      p_description: dpDesc || null
+    });
 
-    const { error } = await supabase.from("banks").insert(payload).select().single();
-    if (error) { alert(error.message); return; }
-    setShowForm(false);
-    await load(); // refresh
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    closeDP();
+    await load();
+    // opsional: pindah ke halaman deposits
+    // window.location.href = "/deposits";
   };
 
-  // tombol placeholder (ukuran seragam)
-  const ActBtn = ({ label, title }: { label: string; title: string }) => (
-    <button
-      type="button"
-      title={title}
-      className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed"
-      disabled
-    >
+  const saveSetting = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: prof, error: e1 } = await supabase
+      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
+    if (e1) { alert(e1.message); return; }
+    const { error } = await supabase
+      .from("tenant_settings")
+      .upsert({
+        tenant_id: prof?.tenant_id,
+        bank_direct_fee_hits_credit: hitCredit,
+        updated_at: new Date().toISOString(),
+        updated_by: user?.id ?? null
+      });
+    if (error) { alert(error.message); return; }
+    setShowSetting(false);
+  };
+
+  // tombol placeholder (WD/PDP/TT/Adj/Biaya)
+  const DisabledBtn = ({ label, title }: { label: string; title: string }) => (
+    <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed" title={title} disabled>
       {label}
     </button>
   );
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {/* Setting ON/OFF potongan -> credit */}
         <button
           type="button"
-          onClick={openModal}
+          onClick={() => setShowSetting(true)}
+          className="rounded bg-gray-100 px-4 py-2"
+          title="Pengaturan dampak potongan langsung ke credit tenant"
+        >
+          Setting Potongan → Credit
+        </button>
+        <button
+          type="button"
+          onClick={() => { /* New Record bank tetap seperti sebelumnya (modal kamu) */ const evt = new CustomEvent("open-bank-new"); document.dispatchEvent(evt); }}
           className="rounded bg-green-600 text-white px-4 py-2"
         >
           New Record
@@ -142,16 +241,12 @@ export default function BanksTable() {
       </div>
 
       <div className="overflow-auto rounded border bg-white">
-        {/* banks-grid -> tinggi baris sedikit lebih besar */}
         <table className="table-grid banks-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr>
               <th className="text-left w-16">ID</th>
-              {/* Bank dipendekkan sedikit */}
               <th className="text-left min-w-[260px]">Bank</th>
-              {/* Website, Balance, Player & CS Action dibuat center */}
               <th className="text-center w-44">Website</th>
-              {/* Balance diperlebar sedikit */}
               <th className="text-center w-48">Balance</th>
               <th className="text-center w-64">Player Action</th>
               <th className="text-center w-64">CS Action</th>
@@ -181,16 +276,22 @@ export default function BanksTable() {
                     <td className="text-center">{formatAmount(r.balance)}</td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
-                        <ActBtn label="DP"  title="DP (coming soon)" />
-                        <ActBtn label="WD"  title="WD (coming soon)" />
-                        <ActBtn label="PDP" title="PDP (coming soon)" />
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Buat deposit (DP)"
+                          onClick={() => openDPFor(r)}
+                        >
+                          DP
+                        </button>
+                        <DisabledBtn label="WD" title="WD (coming soon)" />
+                        <DisabledBtn label="PDP" title="PDP (coming soon)" />
                       </div>
                     </td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
-                        <ActBtn label="TT"   title="TT (coming soon)" />
-                        <ActBtn label="Adj"  title="Adjustment (coming soon)" />
-                        <ActBtn label="Biaya" title="Biaya (coming soon)" />
+                        <DisabledBtn label="TT"  title="TT (coming soon)" />
+                        <DisabledBtn label="Adj" title="Adjustment (coming soon)" />
+                        <DisabledBtn label="Biaya" title="Biaya (coming soon)" />
                       </div>
                     </td>
                   </tr>
@@ -201,90 +302,133 @@ export default function BanksTable() {
         </table>
       </div>
 
-      {/* ===== Modal New Record ===== */}
-      {showForm && (
+      {/* =========== Modal Setting Potongan → Credit =========== */}
+      {showSetting && (
         <div
           className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
-          onMouseDown={(e) => { if (e.currentTarget === e.target) closeModal(); }}
+          onMouseDown={(e) => { if (e.currentTarget === e.target) setShowSetting(false); }}
+        >
+          <div className="bg-white rounded border w-full max-w-md mt-10">
+            <div className="p-4 border-b font-semibold">Potongan Langsung → Credit Tenant</div>
+            <div className="p-4 space-y-3">
+              <div className="text-sm">
+                Atur **dampak potongan langsung** terhadap **credit tenant** saat <b>Deposit</b>:
+              </div>
+              <div className="flex items-center gap-2">
+                <input id="hitcredit" type="checkbox" checked={hitCredit} onChange={(e)=>setHitCredit(e.target.checked)} />
+                <label htmlFor="hitcredit" className="text-sm">
+                  <b>ON</b> (credit dikurangi <b>NET</b>). Matikan untuk <b>OFF</b> (credit dikurangi <b>GROSS</b>).
+                </label>
+              </div>
+            </div>
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button onClick={()=>setShowSetting(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button onClick={saveSetting} className="rounded px-4 py-2 bg-blue-600 text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========== Modal DP =========== */}
+      {showDP && dpBank && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e)=>{ if (e.currentTarget === e.target) closeDP(); }}
         >
           <form
-            onSubmit={(e) => { e.preventDefault(); save(); }}
-            className="bg-white rounded border w-full max-w-xl mt-10"
+            onSubmit={(e)=>{ e.preventDefault(); submitDP(); }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
           >
-            <div className="p-4 border-b font-semibold">Buat Bank Baru</div>
+            <div className="p-4 border-b">
+              <div className="font-semibold">
+                Deposit to [{dpBank.bank_code}] {dpBank.account_name} - {dpBank.account_no}
+              </div>
+              <div className="text-xs mt-1">
+                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+              </div>
+            </div>
 
             <div className="p-4 space-y-3">
+              {/* Player search */}
               <div>
-                <label className="block text-xs mb-1">Bank Provider</label>
-                <select
-                  value={form.bank_code}
-                  onChange={(e)=>setForm(s=>({ ...s, bank_code: e.target.value }))}
-                  className="border rounded px-3 py-2 w-full"
-                >
-                  {BANK_CODES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
+                <label className="block text-xs mb-1">Player</label>
+                <div className="relative">
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    placeholder="search username"
+                    value={leadPicked ? leadPicked.username ?? "" : leadQuery}
+                    onChange={(e)=>{ setLeadPicked(null); setLeadQuery(e.target.value); }}
+                  />
+                  {/* dropdown */}
+                  {!leadPicked && leadOptions.length > 0 && (
+                    <div className="absolute z-10 mt-1 max-h-56 overflow-auto w-full border bg-white rounded shadow">
+                      {leadOptions.map(opt => (
+                        <div
+                          key={opt.id}
+                          onClick={()=>{ setLeadPicked(opt); setLeadOptions([]); }}
+                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                        >
+                          {opt.username} ({opt.bank ?? opt.bank_name} | {opt.name} | {opt.bank_no})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Amount */}
               <div>
-                <label className="block text-xs mb-1">Nama rekening</label>
+                <label className="block text-xs mb-1">Amount</label>
                 <input
-                  value={form.account_name}
-                  onChange={(e)=>setForm(s=>({ ...s, account_name: e.target.value }))}
                   className="border rounded px-3 py-2 w-full"
+                  placeholder="0.00"
+                  value={dpAmountStr}
+                  onChange={(e)=>{
+                    const raw = e.target.value;
+                    const num = toEnNumber(raw);
+                    setDpAmountStr(
+                      num === 0 ? "" : new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
+                    );
+                  }}
                 />
               </div>
 
+              {/* Transaction Date */}
               <div>
-                <label className="block text-xs mb-1">No rekening</label>
+                <label className="block text-xs mb-1">Transaction Date</label>
                 <input
-                  value={form.account_no}
-                  onChange={(e)=>setForm(s=>({ ...s, account_no: e.target.value }))}
+                  type="datetime-local"
                   className="border rounded px-3 py-2 w-full"
+                  value={dpTxnFinal}
+                  onChange={(e)=>setDpTxnFinal(e.target.value)}
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  id="pulsa"
-                  type="checkbox"
-                  checked={form.is_pulsa}
-                  onChange={(e)=>setForm(s=>({ ...s, is_pulsa: e.target.checked }))}
-                />
-                <label htmlFor="pulsa" className="text-sm">Is Pulsa?</label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  id="directfee"
-                  type="checkbox"
-                  checked={form.direct_fee_enabled}
-                  onChange={(e)=>setForm(s=>({ ...s, direct_fee_enabled: e.target.checked }))}
-                />
-                <label htmlFor="directfee" className="text-sm">Potongan Langsung?</label>
-              </div>
-
+              {/* Promo Code (tidak dipakai) */}
               <div>
-                <label className="block text-xs mb-1">% potongan langsung</label>
+                <label className="block text-xs mb-1">Promo Code</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  value={form.direct_fee_percent}
-                  onChange={(e)=>setForm(s=>({ ...s, direct_fee_percent: e.target.value }))}
                   className="border rounded px-3 py-2 w-full"
-                  disabled={!form.direct_fee_enabled}
+                  value={dpPromo}
+                  onChange={(e)=>setDpPromo(e.target.value)}
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={dpDesc}
+                  onChange={(e)=>setDpDesc(e.target.value)}
                 />
               </div>
             </div>
 
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={closeModal} className="rounded px-4 py-2 bg-gray-100">
-                Close
-              </button>
-              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">
-                Submit
-              </button>
+              <button type="button" onClick={closeDP} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
         </div>
