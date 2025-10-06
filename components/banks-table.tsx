@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 
@@ -33,16 +33,22 @@ const BANK_CODES = [
   "LINKAJA","SAKUKU","OTHER"
 ];
 
-function toEnNumber(input: string) {
-  const cleaned = input.replace(/[^0-9.]/g, "");
+function parseNumberFromInput(s: string) {
+  // hilangkan pemisah ribuan & karakter non angka/decimal
+  const cleaned = s.replace(/,/g, "").replace(/[^\d.]/g, "");
+  // jaga hanya satu titik desimal dan max 2 desimal saat ketik
   const parts = cleaned.split(".");
-  const int = parts[0] || "0";
-  const frac = parts[1]?.slice(0, 2) ?? "";
-  return Number(frac ? `${int}.${frac}` : int);
+  const integer = parts[0] ?? "0";
+  const frac = parts[1] ? parts[1].slice(0, 2) : "";
+  return frac ? `${integer}.${frac}` : integer;
+}
+
+function toNumber(s: string) {
+  const n = Number((s || "0").replace(/,/g, ""));
+  return isNaN(n) ? 0 : n;
 }
 
 function nowLocalDatetimeValue() {
-  // yyyy-MM-ddTHH:mm (for input[type=datetime-local])
   const d = new Date();
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -65,25 +71,31 @@ export default function BanksTable() {
   const [dpBank, setDpBank] = useState<BankRow | null>(null);
   const [dpOpenedISO, setDpOpenedISO] = useState<string>("");
   const [dpTxnFinal, setDpTxnFinal] = useState<string>(nowLocalDatetimeValue());
-  const [dpAmountStr, setDpAmountStr] = useState<string>("");
+  const [dpAmountStr, setDpAmountStr] = useState<string>("0.00");
   const [dpPromo, setDpPromo] = useState<string>("");
   const [dpDesc, setDpDesc] = useState<string>("");
+
+  // player search states
   const [leadQuery, setLeadQuery] = useState<string>("");
   const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
   const [leadPicked, setLeadPicked] = useState<LeadLite | null>(null);
+  const [leadIndex, setLeadIndex] = useState<number>(0); // index item yang di-highlight
+  const playerInputRef = useRef<HTMLInputElement | null>(null);
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
 
   const closeDP = useCallback(() => setShowDP(false), []);
   const openDPFor = (b: BankRow) => {
     setDpBank(b);
     setShowDP(true);
-    setDpOpenedISO(new Date().toISOString());  // jejak waktu saat modal dibuka (UTC)
-    setDpTxnFinal(nowLocalDatetimeValue());    // default ke waktu lokal
-    setDpAmountStr("");
+    setDpOpenedISO(new Date().toISOString());
+    setDpTxnFinal(nowLocalDatetimeValue());
+    setDpAmountStr("0.00"); // default
     setDpPromo("");
     setDpDesc("");
     setLeadQuery("");
     setLeadOptions([]);
     setLeadPicked(null);
+    setLeadIndex(0);
   };
 
   // ESC close (DP & Setting)
@@ -102,7 +114,7 @@ export default function BanksTable() {
     setLoading(true);
 
     // tenant & credit
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user} } = await supabase.auth.getUser();
     const { data: prof } = await supabase
       .from("profiles")
       .select("tenant_id")
@@ -155,6 +167,7 @@ export default function BanksTable() {
       if (!active) return;
       if (error) { console.error(error); return; }
       setLeadOptions((data as LeadLite[]) ?? []);
+      setLeadIndex(0); // reset highlight ke item pertama
     })();
     return () => { active = false; };
   }, [leadQuery, showDP, supabase]);
@@ -163,18 +176,22 @@ export default function BanksTable() {
     if (!dpBank) return;
     if (!leadPicked || !leadPicked.username) {
       alert("Pilih Player (username) lebih dulu.");
+      // fokuskan kembali ke input player
+      playerInputRef.current?.focus();
       return;
     }
-    const gross = toEnNumber(dpAmountStr);
+
+    const gross = toNumber(dpAmountStr);
     if (!(gross > 0)) {
       alert("Amount harus lebih dari 0.");
+      amountInputRef.current?.focus();
       return;
     }
 
     // parse datetime-local ke ISO
     const txnFinalISO = new Date(dpTxnFinal).toISOString();
 
-    const { data, error } = await supabase.rpc("perform_deposit", {
+    const { error } = await supabase.rpc("perform_deposit", {
       p_bank_id: dpBank.id,
       p_lead_id: leadPicked.id,
       p_username: leadPicked.username,
@@ -191,8 +208,6 @@ export default function BanksTable() {
     }
     closeDP();
     await load();
-    // opsional: pindah ke halaman deposits
-    // window.location.href = "/deposits";
   };
 
   const saveSetting = async () => {
@@ -233,7 +248,7 @@ export default function BanksTable() {
         </button>
         <button
           type="button"
-          onClick={() => { /* New Record bank tetap seperti sebelumnya (modal kamu) */ const evt = new CustomEvent("open-bank-new"); document.dispatchEvent(evt); }}
+          onClick={() => { const evt = new CustomEvent("open-bank-new"); document.dispatchEvent(evt); }}
           className="rounded bg-green-600 text-white px-4 py-2"
         >
           New Record
@@ -310,14 +325,14 @@ export default function BanksTable() {
         >
           <div className="bg-white rounded border w-full max-w-md mt-10">
             <div className="p-4 border-b font-semibold">Potongan Langsung → Credit Tenant</div>
-            <div className="p-4 space-y-3">
-              <div className="text-sm">
-                Atur **dampak potongan langsung** terhadap **credit tenant** saat <b>Deposit</b>:
+            <div className="p-4 space-y-3 text-sm">
+              <div>
+                Atur <b>dampak potongan langsung</b> terhadap <b>credit tenant</b> saat <b>Deposit</b>:
               </div>
               <div className="flex items-center gap-2">
                 <input id="hitcredit" type="checkbox" checked={hitCredit} onChange={(e)=>setHitCredit(e.target.checked)} />
-                <label htmlFor="hitcredit" className="text-sm">
-                  <b>ON</b> (credit dikurangi <b>NET</b>). Matikan untuk <b>OFF</b> (credit dikurangi <b>GROSS</b>).
+                <label htmlFor="hitcredit">
+                  <b>ON</b> = credit dikurangi <b>NET</b>. &nbsp;Matikan (OFF) = credit dikurangi <b>GROSS</b>.
                 </label>
               </div>
             </div>
@@ -354,19 +369,46 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Player</label>
                 <div className="relative">
                   <input
+                    ref={playerInputRef}
                     className="border rounded px-3 py-2 w-full"
                     placeholder="search username"
-                    value={leadPicked ? leadPicked.username ?? "" : leadQuery}
+                    value={leadPicked ? (leadPicked.username ?? "") : leadQuery}
                     onChange={(e)=>{ setLeadPicked(null); setLeadQuery(e.target.value); }}
+                    onKeyDown={(e) => {
+                      if (!leadPicked && leadOptions.length > 0) {
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setLeadIndex((i) => Math.min(i + 1, leadOptions.length - 1));
+                          return;
+                        }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setLeadIndex((i) => Math.max(i - 1, 0));
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          // Enter pertama -> pilih player yang di-highlight
+                          e.preventDefault();
+                          const pick = leadOptions[Math.max(0, leadIndex)];
+                          if (pick) {
+                            setLeadPicked(pick);
+                            setLeadOptions([]);
+                          }
+                          return;
+                        }
+                      }
+                      // Jika dropdown tidak terbuka / sudah pilih player,
+                      // biarkan Enter men-trigger submit form (onSubmit di form).
+                    }}
                   />
                   {/* dropdown */}
                   {!leadPicked && leadOptions.length > 0 && (
                     <div className="absolute z-10 mt-1 max-h-56 overflow-auto w-full border bg-white rounded shadow">
-                      {leadOptions.map(opt => (
+                      {leadOptions.map((opt, idx) => (
                         <div
                           key={opt.id}
                           onClick={()=>{ setLeadPicked(opt); setLeadOptions([]); }}
-                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                          className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 ${idx===leadIndex ? "bg-blue-50" : ""}`}
                         >
                           {opt.username} ({opt.bank ?? opt.bank_name} | {opt.name} | {opt.bank_no})
                         </div>
@@ -380,14 +422,18 @@ export default function BanksTable() {
               <div>
                 <label className="block text-xs mb-1">Amount</label>
                 <input
+                  ref={amountInputRef}
                   className="border rounded px-3 py-2 w-full"
-                  placeholder="0.00"
                   value={dpAmountStr}
+                  onFocus={(e)=> e.currentTarget.select()}  // auto select all
                   onChange={(e)=>{
-                    const raw = e.target.value;
-                    const num = toEnNumber(raw);
+                    const cleaned = parseNumberFromInput(e.target.value);
+                    setDpAmountStr(cleaned);
+                  }}
+                  onBlur={()=>{
+                    const n = toNumber(dpAmountStr);
                     setDpAmountStr(
-                      num === 0 ? "" : new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num)
+                      new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
                     );
                   }}
                 />
