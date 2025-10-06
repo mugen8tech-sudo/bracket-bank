@@ -106,7 +106,7 @@ export default function BanksTable() {
       is_pulsa: !!form.is_pulsa,
       direct_fee_enabled: !!form.direct_fee_enabled,
       direct_fee_percent: form.direct_fee_enabled ? Number(form.direct_fee_percent) : 0,
-      usage_type: "neutral",   // default, dapat diubah nanti via Bank Management
+      usage_type: "neutral",   // default, diubah dari Bank Management nanti
       is_active: true,
       balance: 0
     };
@@ -117,12 +117,12 @@ export default function BanksTable() {
     await load(); // refresh
   };
 
-  // tombol placeholder
-  const PlaceholderBtn = ({ label, title }: { label: string; title: string }) => (
+  // tombol placeholder (ukuran seragam)
+  const ActBtn = ({ label, title }: { label: string; title: string }) => (
     <button
       type="button"
       title={title}
-      className="px-3 py-1 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed"
+      className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed"
       disabled
     >
       {label}
@@ -142,15 +142,19 @@ export default function BanksTable() {
       </div>
 
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
+        {/* banks-grid -> tinggi baris sedikit lebih besar */}
+        <table className="table-grid banks-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr>
               <th className="text-left w-16">ID</th>
-              <th className="text-left min-w-[320px]">Bank</th>
-              <th className="text-left w-40">Website</th>
-              <th className="text-left w-40">Balance</th>
-              <th className="text-left w-56">Player Action</th>
-              <th className="text-left w-48">CS Action</th>
+              {/* Bank dipendekkan sedikit */}
+              <th className="text-left min-w-[260px]">Bank</th>
+              {/* Website, Balance, Player & CS Action dibuat center */}
+              <th className="text-center w-44">Website</th>
+              {/* Balance diperlebar sedikit */}
+              <th className="text-center w-48">Balance</th>
+              <th className="text-center w-64">Player Action</th>
+              <th className="text-center w-64">CS Action</th>
             </tr>
           </thead>
           <tbody>
@@ -173,20 +177,20 @@ export default function BanksTable() {
                       </div>
                       <div className="text-xs">{r.account_no}</div>
                     </td>
-                    <td>{tenantName || "-"}</td>
-                    <td>{formatAmount(r.balance)}</td>
-                    <td>
-                      <div className="flex gap-2">
-                        <PlaceholderBtn label="DP"  title="DP (coming soon)" />
-                        <PlaceholderBtn label="WD"  title="WD (coming soon)" />
-                        <PlaceholderBtn label="PDP" title="PDP (coming soon)" />
+                    <td className="text-center">{tenantName || "-"}</td>
+                    <td className="text-center">{formatAmount(r.balance)}</td>
+                    <td className="text-center">
+                      <div className="inline-flex items-center gap-2">
+                        <ActBtn label="DP"  title="DP (coming soon)" />
+                        <ActBtn label="WD"  title="WD (coming soon)" />
+                        <ActBtn label="PDP" title="PDP (coming soon)" />
                       </div>
                     </td>
-                    <td>
-                      <div className="flex gap-2">
-                        <PlaceholderBtn label="TT"   title="TT (coming soon)" />
-                        <PlaceholderBtn label="Adj"  title="Adjustment (coming soon)" />
-                        <PlaceholderBtn label="Biaya" title="Biaya (coming soon)" />
+                    <td className="text-center">
+                      <div className="inline-flex items-center gap-2">
+                        <ActBtn label="TT"   title="TT (coming soon)" />
+                        <ActBtn label="Adj"  title="Adjustment (coming soon)" />
+                        <ActBtn label="Biaya" title="Biaya (coming soon)" />
                       </div>
                     </td>
                   </tr>
