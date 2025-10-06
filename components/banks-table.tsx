@@ -117,12 +117,12 @@ export default function BanksTable() {
     await load(); // refresh
   };
 
-  // tombol placeholder (ukuran seragam)
+  // tombol placeholder (ukuran seragam; siap di-group)
   const ActBtn = ({ label, title }: { label: string; title: string }) => (
     <button
       type="button"
       title={title}
-      className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed"
+      className="h-8 min-w-[64px] px-4 bg-blue-600 text-white cursor-not-allowed focus:outline-none"
       disabled
     >
       {label}
@@ -180,14 +180,15 @@ export default function BanksTable() {
                     <td className="text-center">{tenantName || "-"}</td>
                     <td className="text-center">{formatAmount(r.balance)}</td>
                     <td className="text-center">
-                      <div className="inline-flex items-center gap-2">
+                      {/* tombol menyatu */}
+                      <div className="btn-group">
                         <ActBtn label="DP"  title="DP (coming soon)" />
                         <ActBtn label="WD"  title="WD (coming soon)" />
                         <ActBtn label="PDP" title="PDP (coming soon)" />
                       </div>
                     </td>
                     <td className="text-center">
-                      <div className="inline-flex items-center gap-2">
+                      <div className="btn-group">
                         <ActBtn label="TT"   title="TT (coming soon)" />
                         <ActBtn label="Adj"  title="Adjustment (coming soon)" />
                         <ActBtn label="Biaya" title="Biaya (coming soon)" />
