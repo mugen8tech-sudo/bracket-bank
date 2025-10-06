@@ -22,12 +22,14 @@ export default function LeadsTable() {
   const [rows, setRows] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // filters
   const [q, setQ] = useState("");
   const [bank, setBank] = useState("ALL");
   const [invalid, setInvalid] = useState<"ALL"|"YES"|"NO">("ALL");
   const [start, setStart] = useState<string>("");
   const [finish, setFinish] = useState<string>("");
 
+  // form modal
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [form, setForm] = useState<Partial<Lead>>({});
@@ -59,7 +61,7 @@ export default function LeadsTable() {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
 
   const onSubmitFilter = (e: React.FormEvent) => { e.preventDefault(); load(); };
 
@@ -67,6 +69,7 @@ export default function LeadsTable() {
   const openEdit = (r: Lead) => { setEditing(r); setForm(r); setShowForm(true); };
 
   const save = async () => {
+    // Ambil tenant_id user dari profiles agar insert/update lolos RLS
     const { data: { user } } = await supabase.auth.getUser();
     const { data: prof, error: eProf } = await supabase
       .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
@@ -99,6 +102,7 @@ export default function LeadsTable() {
 
   return (
     <div className="space-y-4">
+      {/* Filter bar */}
       <form onSubmit={onSubmitFilter} className="flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-xs mb-1">Search</label>
@@ -132,6 +136,7 @@ export default function LeadsTable() {
         <button type="button" onClick={openNew} className="rounded bg-green-600 text-white px-4 py-2">New Lead</button>
       </form>
 
+      {/* Tabel */}
       <div className="overflow-auto rounded border bg-white">
         <table className="min-w-[1200px] w-full text-sm">
           <thead className="bg-gray-50 border-b">
@@ -173,6 +178,7 @@ export default function LeadsTable() {
         </table>
       </div>
 
+      {/* Modal Form */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded border w-full max-w-2xl">
