@@ -33,18 +33,37 @@ const BANK_CODES = [
   "LINKAJA","SAKUKU","OTHER"
 ];
 
-function parseNumberFromInput(s: string) {
-  // hilangkan pemisah ribuan & karakter non angka/decimal
-  const cleaned = s.replace(/,/g, "").replace(/[^\d.]/g, "");
-  // jaga hanya satu titik desimal dan max 2 desimal saat ketik
-  const parts = cleaned.split(".");
-  const integer = parts[0] ?? "0";
-  const frac = parts[1] ? parts[1].slice(0, 2) : "";
-  return frac ? `${integer}.${frac}` : integer;
+/* ---------- Helpers untuk Amount ---------- */
+function formatWithGroupingLive(raw: string) {
+  // 1) buang comma & karakter selain digit/titik
+  let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
+  // 2) hanya satu titik desimal
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot !== -1) {
+    cleaned =
+      cleaned.slice(0, firstDot + 1) +
+      cleaned.slice(firstDot + 1).replace(/\./g, "");
+  }
+  // 3) pecah integer/frac, batasi frac 2 digit
+  let [intPart = "0", fracPartRaw] = cleaned.split(".");
+  // hilangkan leading zero berlebih, sisakan satu jika semua nol
+  intPart = intPart.replace(/^0+(?=\d)/, "");
+  if (intPart === "") intPart = "0";
+  const intGrouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  if (fracPartRaw !== undefined) {
+    const frac = fracPartRaw.slice(0, 2);
+    // pertahankan titik walau belum ada angka desimal (user bisa lanjut ketik)
+    return fracPartRaw.length === 0
+      ? intGrouped + "."
+      : intGrouped + "." + frac;
+  }
+  return intGrouped;
 }
 
-function toNumber(s: string) {
-  const n = Number((s || "0").replace(/,/g, ""));
+function toNumber(input: string) {
+  let c = (input || "0").replace(/,/g, "");
+  if (c.endsWith(".")) c = c.slice(0, -1);
+  const n = Number(c);
   return isNaN(n) ? 0 : n;
 }
 
@@ -176,7 +195,6 @@ export default function BanksTable() {
     if (!dpBank) return;
     if (!leadPicked || !leadPicked.username) {
       alert("Pilih Player (username) lebih dulu.");
-      // fokuskan kembali ke input player
       playerInputRef.current?.focus();
       return;
     }
@@ -188,7 +206,6 @@ export default function BanksTable() {
       return;
     }
 
-    // parse datetime-local ke ISO
     const txnFinalISO = new Date(dpTxnFinal).toISOString();
 
     const { error } = await supabase.rpc("perform_deposit", {
@@ -227,7 +244,6 @@ export default function BanksTable() {
     setShowSetting(false);
   };
 
-  // tombol placeholder (WD/PDP/TT/Adj/Biaya)
   const DisabledBtn = ({ label, title }: { label: string; title: string }) => (
     <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed" title={title} disabled>
       {label}
@@ -237,7 +253,6 @@ export default function BanksTable() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end gap-2">
-        {/* Setting ON/OFF potongan -> credit */}
         <button
           type="button"
           onClick={() => setShowSetting(true)}
@@ -376,32 +391,12 @@ export default function BanksTable() {
                     onChange={(e)=>{ setLeadPicked(null); setLeadQuery(e.target.value); }}
                     onKeyDown={(e) => {
                       if (!leadPicked && leadOptions.length > 0) {
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setLeadIndex((i) => Math.min(i + 1, leadOptions.length - 1));
-                          return;
-                        }
-                        if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          setLeadIndex((i) => Math.max(i - 1, 0));
-                          return;
-                        }
-                        if (e.key === "Enter") {
-                          // Enter pertama -> pilih player yang di-highlight
-                          e.preventDefault();
-                          const pick = leadOptions[Math.max(0, leadIndex)];
-                          if (pick) {
-                            setLeadPicked(pick);
-                            setLeadOptions([]);
-                          }
-                          return;
-                        }
+                        if (e.key === "ArrowDown") { e.preventDefault(); setLeadIndex((i) => Math.min(i + 1, leadOptions.length - 1)); return; }
+                        if (e.key === "ArrowUp")   { e.preventDefault(); setLeadIndex((i) => Math.max(i - 1, 0)); return; }
+                        if (e.key === "Enter")     { e.preventDefault(); const pick = leadOptions[Math.max(0, leadIndex)]; if (pick) { setLeadPicked(pick); setLeadOptions([]); } return; }
                       }
-                      // Jika dropdown tidak terbuka / sudah pilih player,
-                      // biarkan Enter men-trigger submit form (onSubmit di form).
                     }}
                   />
-                  {/* dropdown */}
                   {!leadPicked && leadOptions.length > 0 && (
                     <div className="absolute z-10 mt-1 max-h-56 overflow-auto w-full border bg-white rounded shadow">
                       {leadOptions.map((opt, idx) => (
@@ -418,7 +413,7 @@ export default function BanksTable() {
                 </div>
               </div>
 
-              {/* Amount */}
+              {/* Amount (live thousand separators) */}
               <div>
                 <label className="block text-xs mb-1">Amount</label>
                 <input
@@ -427,8 +422,15 @@ export default function BanksTable() {
                   value={dpAmountStr}
                   onFocus={(e)=> e.currentTarget.select()}  // auto select all
                   onChange={(e)=>{
-                    const cleaned = parseNumberFromInput(e.target.value);
-                    setDpAmountStr(cleaned);
+                    const formatted = formatWithGroupingLive(e.target.value);
+                    setDpAmountStr(formatted);
+                    // pindahkan kursor ke akhir agar tidak "nyangkut"
+                    setTimeout(() => {
+                      if (amountInputRef.current) {
+                        const len = amountInputRef.current.value.length;
+                        amountInputRef.current.setSelectionRange(len, len);
+                      }
+                    }, 0);
                   }}
                   onBlur={()=>{
                     const n = toNumber(dpAmountStr);
