@@ -39,7 +39,6 @@ export default function SignInClient() {
           type="email"
           required
           className="w-full border rounded px-3 py-2 mb-3 focus:outline-none focus:ring"
-          placeholder="you@company.com"
         />
 
         <label className="block text-sm mb-1">Password</label>
@@ -49,7 +48,6 @@ export default function SignInClient() {
           type="password"
           required
           className="w-full border rounded px-3 py-2 mb-4 focus:outline-none focus:ring"
-          placeholder="••••••••"
         />
 
         {err && <p className="text-sm text-red-600 mb-3">{err}</p>}
@@ -60,10 +58,6 @@ export default function SignInClient() {
         >
           {loading ? "Memproses..." : "Login"}
         </button>
-
-        <p className="text-xs text-gray-500 mt-3">
-          Tidak ada registrasi. Akun dibuat oleh admin.
-        </p>
       </form>
     </div>
   );
