@@ -92,6 +92,14 @@ export default function BanksTable() {
   const [wdFeeStr, setWdFeeStr] = useState<string>("0.00");
   const [wdDesc, setWdDesc] = useState<string>("");
 
+  // ====== PDP modal ======
+  const [showPDP, setShowPDP] = useState(false);
+  const [pdpBank, setPdpBank] = useState<BankRow | null>(null);
+  const [pdpOpenedISO, setPdpOpenedISO] = useState<string>("");
+  const [pdpTxnFinal, setPdpTxnFinal] = useState<string>(nowLocalDatetimeValue());
+  const [pdpAmountStr, setPdpAmountStr] = useState<string>("0.00");
+  const [pdpDesc, setPdpDesc] = useState<string>("");
+
   // player search states (dipakai DP & WD)
   const [leadQuery, setLeadQuery] = useState<string>("");
   const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
@@ -102,6 +110,7 @@ export default function BanksTable() {
   const dpAmountRef = useRef<HTMLInputElement | null>(null);
   const wdAmountRef = useRef<HTMLInputElement | null>(null);
   const wdFeeRef    = useRef<HTMLInputElement | null>(null);
+  const pdpAmountRef = useRef<HTMLInputElement | null>(null);
 
   const closeDP = useCallback(() => setShowDP(false), []);
   const openDPFor = (b: BankRow) => {
@@ -121,18 +130,27 @@ export default function BanksTable() {
     setLeadQuery(""); setLeadOptions([]); setLeadPicked(null); setLeadIndex(0);
   };
 
+  const closePDP = useCallback(()=>setShowPDP(false),[]);
+  const openPDPFor = (b: BankRow) => {
+    setPdpBank(b); setShowPDP(true);
+    setPdpOpenedISO(new Date().toISOString());
+    setPdpTxnFinal(nowLocalDatetimeValue());
+    setPdpAmountStr("0.00"); setPdpDesc("");
+  };
+
   // ESC close (DP/WD/Setting)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (showDP) closeDP();
         if (showWD) closeWD();
+        if (showPDP) closePDP();
         if (showSetting) setShowSetting(false);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showDP, showWD, showSetting, closeDP, closeWD]);
+  }, [showDP, showWD, showPDP, showSetting, closeDP, closeWD, closePDP]);
 
   const load = async () => {
     setLoading(true);
@@ -241,6 +259,23 @@ export default function BanksTable() {
     closeWD(); await load();
   };
 
+  /* ========== Submit PDP ========== */
+  const submitPDP = async () => {
+    if (!pdpBank) return;
+    const gross = toNumber(pdpAmountStr);
+    if (!(gross > 0)) { alert("Amount harus > 0"); pdpAmountRef.current?.focus(); return; }
+    const txnFinalISO = new Date(pdpTxnFinal).toISOString();
+    const { error } = await supabase.rpc("create_pending_deposit", {
+      p_bank_id: pdpBank.id,
+      p_amount_gross: gross,
+      p_txn_at_opened: pdpOpenedISO,
+      p_txn_at_final: txnFinalISO,
+      p_description: pdpDesc || null
+    });
+    if (error) { alert(error.message); return; }
+    closePDP(); await load();
+  };
+
   const saveSetting = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     const { data: prof, error: e1 } = await supabase
@@ -308,7 +343,7 @@ export default function BanksTable() {
                       <div className="inline-flex items-center gap-2">
                         <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Deposit" onClick={() => openDPFor(r)}>DP</button>
                         <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Withdraw" onClick={() => openWDFor(r)}>WD</button>
-                        <DisabledBtn label="PDP" title="PDP (coming soon)" />
+                        <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Pending Deposit" onClick={() => openPDPFor(r)}>PDP</button>
                       </div>
                     </td>
                     <td className="text-center">
@@ -496,6 +531,47 @@ export default function BanksTable() {
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
               <button type="button" onClick={closeWD} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ===== Modal PDP ===== */}
+      {showPDP && pdpBank && (
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+             onMouseDown={(e)=>{ if (e.currentTarget===e.target) closePDP(); }}>
+          <form onSubmit={(e)=>{ e.preventDefault(); submitPDP(); }}
+                className="bg-white rounded border w-full max-w-2xl mt-10">
+            <div className="p-4 border-b">
+              <div className="font-semibold">
+                Pending Deposit untuk [{pdpBank.bank_code}] {pdpBank.account_name} - {pdpBank.account_no}
+              </div>
+              <div className="text-xs mt-1">Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b></div>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs mb-1">Amount (Gross)</label>
+                <input ref={pdpAmountRef} className="border rounded px-3 py-2 w-full"
+                       value={pdpAmountStr}
+                       onFocus={(e)=>e.currentTarget.select()}
+                       onChange={(e)=>{ const f=formatWithGroupingLive(e.target.value); setPdpAmountStr(f);
+                         setTimeout(()=>{ const el=pdpAmountRef.current; if(el){const L=el.value.length; el.setSelectionRange(L,L);} },0); }}
+                       onBlur={()=>{ const n=toNumber(pdpAmountStr); setPdpAmountStr(new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)); }} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1">Transaction Date</label>
+                <input type="datetime-local" className="border rounded px-3 py-2 w-full"
+                       value={pdpTxnFinal} onChange={(e)=>setPdpTxnFinal(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1">Description</label>
+                <textarea rows={3} className="border rounded px-3 py-2 w-full"
+                          value={pdpDesc} onChange={(e)=>setPdpDesc(e.target.value)} />
+              </div>
+            </div>
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button type="button" onClick={closePDP} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
