@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 import Link from "next/link";
@@ -132,6 +132,18 @@ export default function WithdrawalsTable() {
     if (b) setDelBank(b as any);
   };
   const closeDelete = () => { setDelOpen(false); setDelBank(null); };
+
+  // NEW: ESC untuk menutup modal Delete (klik overlay tetap seperti semula)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && delOpen) {
+        e.preventDefault();
+        closeDelete();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [delOpen, closeDelete]);
 
   const submitDelete = async () => {
     if (!delRow) return;
