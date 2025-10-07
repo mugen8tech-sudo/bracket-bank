@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 import Link from "next/link";
@@ -135,6 +135,17 @@ export default function DepositsTable() {
   };
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && delOpen) {
+        e.preventDefault();
+        closeDelete();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [delOpen, closeDelete]);
+
+  useEffect(() => {
     loadToday();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -170,10 +181,10 @@ export default function DepositsTable() {
       .single();
     if (b) setDelBank(b as any);
   };
-  const closeDelete = () => {
+  const closeDelete = useCallback(() => {
     setDelOpen(false);
     setDelBank(null);
-  };
+  });
 
   const submitDelete = async () => {
     if (!delRow) return;
