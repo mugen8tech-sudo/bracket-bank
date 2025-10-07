@@ -613,6 +613,84 @@ export default function BanksTable() {
         </table>
       </div>
 
+      {/* ===== Modal New Bank ===== */}
+      {showNew && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => { if (e.currentTarget === e.target) closeNew(); }}
+        >
+          <form
+            onSubmit={(e) => { e.preventDefault(); submitNewBank(); }}
+            className="bg-white rounded border w-full max-w-xl mt-10"
+          >
+            <div className="p-4 border-b font-semibold">New Bank</div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs mb-1">Bank Provider</label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={nbBankCode}
+                  onChange={(e)=>setNbBankCode(e.target.value)}
+                  required
+                >
+                  <option value="">Pilih bank</option>
+                  {BANK_CODES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs mb-1">Account Name</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={nbAccName}
+                    onChange={(e)=>setNbAccName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Account No</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={nbAccNo}
+                    onChange={(e)=>setNbAccNo(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input id="nb_pulsa" type="checkbox" checked={nbIsPulsa} onChange={(e)=>setNbIsPulsa(e.target.checked)} />
+                <label htmlFor="nb_pulsa">Is Pulsa?</label>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input id="nb_df" type="checkbox" checked={nbDirectFeeEnabled} onChange={(e)=>setNbDirectFeeEnabled(e.target.checked)} />
+                  <label htmlFor="nb_df">Potongan Langsung?</label>
+                </div>
+                {nbDirectFeeEnabled && (
+                  <div>
+                    <label className="block text-xs mb-1">Persentase Potongan (%)</label>
+                    <input
+                      type="number" min={0} max={100} step="0.01"
+                      className="border rounded px-3 py-2 w-full"
+                      value={nbDirectFeePct}
+                      onChange={(e)=>setNbDirectFeePct(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button type="button" onClick={closeNew} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Save</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ===== Modal Setting ===== */}
       {showSetting && (
         <div
