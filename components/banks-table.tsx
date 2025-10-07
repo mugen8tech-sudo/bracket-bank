@@ -27,18 +27,14 @@ type LeadLite = {
   bank_no: string | null;
 };
 
-const BANK_CODES = [
-  "BCA","BRI","BNI","MANDIRI","BSI","CIMB","PERMATA",
-  "SEABANK","JAGO","DANA","OVO","GOPAY","SHOPEEPAY",
-  "LINKAJA","SAKUKU","OTHER"
-];
-
-/* ---------- Helpers untuk Amount (live grouping) ---------- */
+/* ---------- Helpers amount (live grouping) ---------- */
 function formatWithGroupingLive(raw: string) {
   let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
   const firstDot = cleaned.indexOf(".");
   if (firstDot !== -1) {
-    cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
+    cleaned =
+      cleaned.slice(0, firstDot + 1) +
+      cleaned.slice(firstDot + 1).replace(/\./g, "");
   }
   let [intPart = "0", fracPartRaw] = cleaned.split(".");
   intPart = intPart.replace(/^0+(?=\d)/, "");
@@ -59,7 +55,9 @@ function toNumber(input: string) {
 function nowLocalDatetimeValue() {
   const d = new Date();
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+    d.getDate()
+  )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export default function BanksTable() {
@@ -74,22 +72,12 @@ export default function BanksTable() {
   const [showSetting, setShowSetting] = useState(false);
   const [hitCredit, setHitCredit] = useState<boolean>(true);
 
-  // ====== NEW BANK modal ======
-  const [showNew, setShowNew] = useState(false);
-  const [nbBankCode, setNbBankCode] = useState<string>("");
-  const [nbAccName, setNbAccName] = useState<string>("");
-  const [nbAccNo, setNbAccNo] = useState<string>("");
-  const [nbIsPulsa, setNbIsPulsa] = useState<boolean>(false);
-  const [nbDirectFeeEnabled, setNbDirectFeeEnabled] = useState<boolean>(false);
-  const [nbDirectFeePct, setNbDirectFeePct] = useState<string>("0.00");
-
   // ====== DP modal ======
   const [showDP, setShowDP] = useState(false);
   const [dpBank, setDpBank] = useState<BankRow | null>(null);
   const [dpOpenedISO, setDpOpenedISO] = useState<string>("");
   const [dpTxnFinal, setDpTxnFinal] = useState<string>(nowLocalDatetimeValue());
   const [dpAmountStr, setDpAmountStr] = useState<string>("0.00");
-  const [dpPromo, setDpPromo] = useState<string>("");
   const [dpDesc, setDpDesc] = useState<string>("");
 
   // ====== WD modal ======
@@ -109,6 +97,16 @@ export default function BanksTable() {
   const [pdpAmountStr, setPdpAmountStr] = useState<string>("0.00");
   const [pdpDesc, setPdpDesc] = useState<string>("");
 
+  // ====== TT modal ======
+  const [showTT, setShowTT] = useState(false);
+  const [ttBankFrom, setTtBankFrom] = useState<BankRow | null>(null);
+  const [ttAmountStr, setTtAmountStr] = useState<string>("0.00");
+  const [ttFeeStr, setTtFeeStr] = useState<string>("0.00");
+  const [ttFromAt, setTtFromAt] = useState<string>(nowLocalDatetimeValue());
+  const [ttBankToId, setTtBankToId] = useState<number | "">("");
+  const [ttToAt, setTtToAt] = useState<string>(nowLocalDatetimeValue());
+  const [ttDesc, setTtDesc] = useState<string>("");
+
   // player search states (dipakai DP & WD)
   const [leadQuery, setLeadQuery] = useState<string>("");
   const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
@@ -118,64 +116,83 @@ export default function BanksTable() {
 
   const dpAmountRef = useRef<HTMLInputElement | null>(null);
   const wdAmountRef = useRef<HTMLInputElement | null>(null);
-  const wdFeeRef    = useRef<HTMLInputElement | null>(null);
+  const wdFeeRef = useRef<HTMLInputElement | null>(null);
   const pdpAmountRef = useRef<HTMLInputElement | null>(null);
-
-  const closeNew = useCallback(() => setShowNew(false), []);
-  const openNew  = useCallback(() => setShowNew(true), []);
+  const ttAmountRef = useRef<HTMLInputElement | null>(null);
+  const ttFeeRef = useRef<HTMLInputElement | null>(null);
 
   const closeDP = useCallback(() => setShowDP(false), []);
   const openDPFor = (b: BankRow) => {
-    setDpBank(b); setShowDP(true);
+    setDpBank(b);
+    setShowDP(true);
     setDpOpenedISO(new Date().toISOString());
     setDpTxnFinal(nowLocalDatetimeValue());
-    setDpAmountStr("0.00"); setDpPromo(""); setDpDesc("");
-    setLeadQuery(""); setLeadOptions([]); setLeadPicked(null); setLeadIndex(0);
+    setDpAmountStr("0.00");
+    setDpDesc("");
+    setLeadQuery("");
+    setLeadOptions([]);
+    setLeadPicked(null);
+    setLeadIndex(0);
   };
 
   const closeWD = useCallback(() => setShowWD(false), []);
   const openWDFor = (b: BankRow) => {
-    setWdBank(b); setShowWD(true);
+    setWdBank(b);
+    setShowWD(true);
     setWdOpenedISO(new Date().toISOString());
     setWdTxnFinal(nowLocalDatetimeValue());
-    setWdAmountStr("0.00"); setWdFeeStr("0.00"); setWdDesc("");
-    setLeadQuery(""); setLeadOptions([]); setLeadPicked(null); setLeadIndex(0);
+    setWdAmountStr("0.00");
+    setWdFeeStr("0.00");
+    setWdDesc("");
+    setLeadQuery("");
+    setLeadOptions([]);
+    setLeadPicked(null);
+    setLeadIndex(0);
   };
 
-  const closePDP = useCallback(()=>setShowPDP(false),[]);
+  const closePDP = useCallback(() => setShowPDP(false), []);
   const openPDPFor = (b: BankRow) => {
-    setPdpBank(b); setShowPDP(true);
+    setPdpBank(b);
+    setShowPDP(true);
     setPdpOpenedISO(new Date().toISOString());
     setPdpTxnFinal(nowLocalDatetimeValue());
-    setPdpAmountStr("0.00"); setPdpDesc("");
+    setPdpAmountStr("0.00");
+    setPdpDesc("");
   };
 
-  // ESC close untuk semua modal (tambahkan showNew di sini)
+  const closeTT = useCallback(() => setShowTT(false), []);
+  const openTTFor = (b: BankRow) => {
+    setTtBankFrom(b);
+    setShowTT(true);
+    setTtAmountStr("0.00");
+    setTtFeeStr("0.00");
+    setTtFromAt(nowLocalDatetimeValue());
+    setTtToAt(nowLocalDatetimeValue());
+    setTtBankToId("");
+    setTtDesc("");
+  };
+
+  // ESC close (DP/WD/PDP/TT/Setting)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showNew) closeNew();
         if (showDP) closeDP();
         if (showWD) closeWD();
         if (showPDP) closePDP();
+        if (showTT) closeTT();
         if (showSetting) setShowSetting(false);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showNew, showDP, showWD, showPDP, showSetting, closeNew, closeDP, closeWD, closePDP]);
-
-  // Listener event (kompatibel dengan tombol existing yang dispatch "open-bank-new")
-  useEffect(() => {
-    const open = () => setShowNew(true);
-    document.addEventListener("open-bank-new", open as EventListener);
-    return () => document.removeEventListener("open-bank-new", open as EventListener);
-  }, []);
+  }, [showDP, showWD, showPDP, showTT, showSetting, closeDP, closeWD, closePDP, closeTT]);
 
   const load = async () => {
     setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const { data: prof } = await supabase
       .from("profiles")
       .select("tenant_id")
@@ -208,86 +225,54 @@ export default function BanksTable() {
     if (error) alert(error.message);
     else setRows((data as BankRow[]) ?? []);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // cari lead by username (untuk DP & WD) - EXACT (tanpa wildcard)
+  // cari lead by username (untuk DP & WD), exact tanpa wildcard
   useEffect(() => {
     let active = true;
     (async () => {
       const searching = showDP || showWD;
       if (!searching) return;
       const q = leadQuery.trim();
-      if (!q) { setLeadOptions([]); return; }
+      if (!q) {
+        setLeadOptions([]);
+        return;
+      }
       const { data, error } = await supabase
         .from("leads")
         .select("id, username, name, bank, bank_name, bank_no")
-        .ilike("username", q) // exact (case-insensitive)
+        .ilike("username", q.trim()) // tanpa wildcard, dari checkpoint terbaru
         .limit(10);
       if (!active) return;
-      if (error) { console.error(error); return; }
+      if (error) {
+        console.error(error);
+        return;
+      }
       setLeadOptions((data as LeadLite[]) ?? []);
       setLeadIndex(0);
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [leadQuery, showDP, showWD, supabase]);
-
-  /* ========== Submit NEW BANK ========== */
-  const submitNewBank = async () => {
-    const bankCode = nbBankCode.trim();
-    const accName  = nbAccName.trim();
-    const accNo    = nbAccNo.trim();
-
-    if (!bankCode) { alert("Bank Provider wajib dipilih"); return; }
-    if (!accName)  { alert("Account Name wajib diisi"); return; }
-    if (!accNo)    { alert("Account No wajib diisi"); return; }
-
-    let pct = 0;
-    if (nbDirectFeeEnabled) {
-      const p = Number(nbDirectFeePct);
-      if (Number.isNaN(p)) { alert("Persentase potongan harus angka"); return; }
-      if (p < 0 || p > 100) { alert("Persentase potongan 0–100%"); return; }
-      pct = Math.round(p * 100) / 100;
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof, error: eProf } = await supabase
-      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
-    if (eProf || !prof?.tenant_id) { alert(eProf?.message ?? "Tenant tidak ditemukan"); return; }
-
-    const { error } = await supabase
-      .from("banks")
-      .insert({
-        tenant_id: prof.tenant_id,
-        bank_code: bankCode,
-        account_name: accName,
-        account_no: accNo,
-        usage_type: "neutral",
-        is_active: true,
-        is_pulsa: nbIsPulsa,
-        direct_fee_enabled: nbDirectFeeEnabled,
-        direct_fee_percent: pct,
-        balance: 0
-      })
-      .select()
-      .single();
-
-    if (error) { alert(error.message); return; }
-
-    // reset & refresh
-    setShowNew(false);
-    setNbBankCode(""); setNbAccName(""); setNbAccNo("");
-    setNbIsPulsa(false); setNbDirectFeeEnabled(false); setNbDirectFeePct("0.00");
-    await load();
-  };
 
   /* ========== Submit DP ========== */
   const submitDP = async () => {
     if (!dpBank) return;
     if (!leadPicked || !leadPicked.username) {
-      alert("Pilih Player (username) lebih dulu."); playerInputRef.current?.focus(); return;
+      alert("Pilih Player (username) lebih dulu.");
+      playerInputRef.current?.focus();
+      return;
     }
     const gross = toNumber(dpAmountStr);
-    if (!(gross > 0)) { alert("Amount harus lebih dari 0."); dpAmountRef.current?.focus(); return; }
+    if (!(gross > 0)) {
+      alert("Amount harus lebih dari 0.");
+      dpAmountRef.current?.focus();
+      return;
+    }
     const txnFinalISO = new Date(dpTxnFinal).toISOString();
     const { error } = await supabase.rpc("perform_deposit", {
       p_bank_id: dpBank.id,
@@ -297,20 +282,30 @@ export default function BanksTable() {
       p_txn_at_opened: dpOpenedISO,
       p_txn_at_final: txnFinalISO,
       p_promo_code: null,
-      p_description: dpDesc || null
+      p_description: dpDesc || null,
     });
-    if (error) { alert(error.message); return; }
-    setShowDP(false); await load();
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    closeDP();
+    await load();
   };
 
   /* ========== Submit WD ========== */
   const submitWD = async () => {
     if (!wdBank) return;
     if (!leadPicked || !leadPicked.username) {
-      alert("Pilih Player (username) lebih dulu."); playerInputRef.current?.focus(); return;
+      alert("Pilih Player (username) lebih dulu.");
+      playerInputRef.current?.focus();
+      return;
     }
     const gross = toNumber(wdAmountStr);
-    if (!(gross > 0)) { alert("Amount harus lebih dari 0."); wdAmountRef.current?.focus(); return; }
+    if (!(gross > 0)) {
+      alert("Amount harus lebih dari 0.");
+      wdAmountRef.current?.focus();
+      return;
+    }
     const fee = toNumber(wdFeeStr);
     const txnFinalISO = new Date(wdTxnFinal).toISOString();
 
@@ -322,51 +317,122 @@ export default function BanksTable() {
       p_transfer_fee_amount: fee,
       p_txn_at_opened: wdOpenedISO,
       p_txn_at_final: txnFinalISO,
-      p_description: wdDesc || null
+      p_description: wdDesc || null,
     });
-    if (error) { alert(error.message); return; }
-    setShowWD(false); await load();
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    closeWD();
+    await load();
   };
 
   /* ========== Submit PDP ========== */
   const submitPDP = async () => {
     if (!pdpBank) return;
     const gross = toNumber(pdpAmountStr);
-    if (!(gross > 0)) { alert("Amount harus > 0"); pdpAmountRef.current?.focus(); return; }
+    if (!(gross > 0)) {
+      alert("Amount harus > 0");
+      pdpAmountRef.current?.focus();
+      return;
+    }
     const txnFinalISO = new Date(pdpTxnFinal).toISOString();
     const { error } = await supabase.rpc("create_pending_deposit", {
       p_bank_id: pdpBank.id,
       p_amount_gross: gross,
       p_txn_at_opened: pdpOpenedISO,
       p_txn_at_final: txnFinalISO,
-      p_description: pdpDesc || null
+      p_description: pdpDesc || null,
     });
-    if (error) { alert(error.message); return; }
-    setShowPDP(false); await load();
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    closePDP();
+    await load();
+  };
+
+  /* ========== Submit TT ========== */
+  const submitTT = async () => {
+    if (!ttBankFrom) return;
+    const amt = toNumber(ttAmountStr);
+    if (!(amt > 0)) {
+      alert("Jumlah transfer harus > 0");
+      ttAmountRef.current?.focus();
+      return;
+    }
+    const fee = toNumber(ttFeeStr);
+    if (!ttBankToId) {
+      alert("Pilih Bank Tujuan");
+      return;
+    }
+    const fromIso = new Date(ttFromAt).toISOString();
+    const toIso = new Date(ttToAt).toISOString();
+
+    const { error } = await supabase.rpc("perform_interbank_transfer", {
+      p_bank_from_id: ttBankFrom.id,
+      p_bank_to_id: Number(ttBankToId),
+      p_amount_gross: amt,
+      p_transfer_fee_amount: fee,
+      p_from_txn_at: fromIso,
+      p_to_txn_at: toIso,
+      p_description: ttDesc || null,
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    closeTT();
+    await load();
   };
 
   const saveSetting = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const { data: prof, error: e1 } = await supabase
-      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
-    if (e1) { alert(e1.message); return; }
-    const { error } = await supabase
-      .from("tenant_settings")
-      .upsert({
-        tenant_id: prof?.tenant_id,
-        bank_direct_fee_hits_credit: hitCredit,
-        updated_at: new Date().toISOString(),
-        updated_by: user?.id ?? null
-      });
-    if (error) { alert(error.message); return; }
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", user?.id)
+      .single();
+    if (e1) {
+      alert(e1.message);
+      return;
+    }
+    const { error } = await supabase.from("tenant_settings").upsert({
+      tenant_id: prof?.tenant_id,
+      bank_direct_fee_hits_credit: hitCredit,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.id ?? null,
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
     setShowSetting(false);
   };
 
-  const DisabledBtn = ({ label, title }: { label: string; title: string }) => (
-    <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed" title={title} disabled>
+  const DisabledBtn = ({
+    label,
+    title,
+  }: {
+    label: string;
+    title: string;
+  }) => (
+    <button
+      className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white opacity-70 cursor-not-allowed"
+      title={title}
+      disabled
+    >
       {label}
     </button>
   );
+
+  // list bank tujuan aktif (selain bank asal)
+  const bankToOptions = (from?: BankRow) =>
+    rows.filter(
+      (b) => b.is_active && (!from || b.id !== from.id)
+    );
 
   /* ================== RENDER ================== */
   return (
@@ -382,7 +448,10 @@ export default function BanksTable() {
         </button>
         <button
           type="button"
-          onClick={openNew}
+          onClick={() => {
+            const evt = new CustomEvent("open-bank-new");
+            document.dispatchEvent(evt);
+          }}
           className="rounded bg-green-600 text-white px-4 py-2"
         >
           New Record
@@ -390,7 +459,10 @@ export default function BanksTable() {
       </div>
 
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid banks-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
+        <table
+          className="table-grid banks-grid min-w-[1000px]"
+          style={{ borderCollapse: "collapse" }}
+        >
           <thead>
             <tr>
               <th className="text-left w-16">ID</th>
@@ -403,34 +475,66 @@ export default function BanksTable() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6}>Loading…</td></tr>
+              <tr>
+                <td colSpan={6}>Loading…</td>
+              </tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6}>No data</td></tr>
+              <tr>
+                <td colSpan={6}>No data</td>
+              </tr>
             ) : (
               rows.map((r) => {
                 const rowBg =
-                  r.usage_type === "deposit" ? "bg-green-200"
-                  : r.usage_type === "withdraw" ? "bg-red-200"
-                  : "bg-white";
+                  r.usage_type === "deposit"
+                    ? "bg-green-200"
+                    : r.usage_type === "withdraw"
+                    ? "bg-red-200"
+                    : "bg-white";
                 return (
                   <tr key={r.id} className={`${rowBg}`}>
                     <td>{r.id}</td>
                     <td className="whitespace-normal break-words">
-                      <div className="font-semibold">[{r.bank_code}] {r.account_name}</div>
+                      <div className="font-semibold">
+                        [{r.bank_code}] {r.account_name}
+                      </div>
                       <div className="text-xs">{r.account_no}</div>
                     </td>
                     <td className="text-center">{tenantName || "-"}</td>
                     <td className="text-center">{formatAmount(r.balance)}</td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
-                        <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Deposit" onClick={() => openDPFor(r)}>DP</button>
-                        <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Withdraw" onClick={() => openWDFor(r)}>WD</button>
-                        <button className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white" title="Pending Deposit" onClick={() => openPDPFor(r)}>PDP</button>
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Deposit"
+                          onClick={() => openDPFor(r)}
+                        >
+                          DP
+                        </button>
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Withdraw"
+                          onClick={() => openWDFor(r)}
+                        >
+                          WD
+                        </button>
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Pending Deposit"
+                          onClick={() => openPDPFor(r)}
+                        >
+                          PDP
+                        </button>
                       </div>
                     </td>
                     <td className="text-center">
                       <div className="inline-flex items-center gap-2">
-                        <DisabledBtn label="TT"  title="TT (coming soon)" />
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Interbank Transfer"
+                          onClick={() => openTTFor(r)}
+                        >
+                          TT
+                        </button>
                         <DisabledBtn label="Adj" title="Adjustment (coming soon)" />
                         <DisabledBtn label="Biaya" title="Biaya (coming soon)" />
                       </div>
@@ -443,99 +547,49 @@ export default function BanksTable() {
         </table>
       </div>
 
-      {/* ===== Modal New Bank ===== */}
-      {showNew && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
-          onMouseDown={(e) => { if (e.currentTarget === e.target) closeNew(); }}
-        >
-          <form
-            onSubmit={(e) => { e.preventDefault(); submitNewBank(); }}
-            className="bg-white rounded border w-full max-w-xl mt-10"
-          >
-            <div className="p-4 border-b font-semibold">New Bank</div>
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="block text-xs mb-1">Bank Provider</label>
-                <select
-                  className="border rounded px-3 py-2 w-full"
-                  value={nbBankCode}
-                  onChange={(e)=>setNbBankCode(e.target.value)}
-                  required
-                >
-                  <option value="">Pilih bank</option>
-                  {BANK_CODES.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs mb-1">Account Name</label>
-                  <input
-                    className="border rounded px-3 py-2 w-full"
-                    value={nbAccName}
-                    onChange={(e)=>setNbAccName(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1">Account No</label>
-                  <input
-                    className="border rounded px-3 py-2 w-full"
-                    value={nbAccNo}
-                    onChange={(e)=>setNbAccNo(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input id="nb_pulsa" type="checkbox" checked={nbIsPulsa} onChange={(e)=>setNbIsPulsa(e.target.checked)} />
-                <label htmlFor="nb_pulsa">Is Pulsa?</label>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <input id="nb_df" type="checkbox" checked={nbDirectFeeEnabled} onChange={(e)=>setNbDirectFeeEnabled(e.target.checked)} />
-                  <label htmlFor="nb_df">Potongan Langsung?</label>
-                </div>
-                {nbDirectFeeEnabled && (
-                  <div>
-                    <label className="block text-xs mb-1">Persentase Potongan (%)</label>
-                    <input
-                      type="number" min={0} max={100} step="0.01"
-                      className="border rounded px-3 py-2 w-full"
-                      value={nbDirectFeePct}
-                      onChange={(e)=>setNbDirectFeePct(e.target.value)}
-                      required
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={closeNew} className="rounded px-4 py-2 bg-gray-100">Close</button>
-              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Save</button>
-            </div>
-          </form>
-        </div>
-      )}
-
       {/* ===== Modal Setting ===== */}
       {showSetting && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e) => { if (e.currentTarget === e.target) setShowSetting(false); }}>
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) setShowSetting(false);
+          }}
+        >
           <div className="bg-white rounded border w-full max-w-md mt-10">
-            <div className="p-4 border-b font-semibold">Potongan Langsung → Credit Tenant</div>
+            <div className="p-4 border-b font-semibold">
+              Potongan Langsung → Credit Tenant
+            </div>
             <div className="p-4 space-y-3 text-sm">
-              <div>Atur <b>dampak potongan langsung</b> terhadap <b>credit tenant</b> saat <b>Deposit</b>:</div>
+              <div>
+                Atur <b>dampak potongan langsung</b> terhadap <b>credit tenant</b>{" "}
+                saat <b>Deposit</b>:
+              </div>
               <div className="flex items-center gap-2">
-                <input id="hitcredit" type="checkbox" checked={hitCredit} onChange={(e)=>setHitCredit(e.target.checked)} />
-                <label htmlFor="hitcredit"><b>ON</b> = credit dikurangi <b>NET</b>. &nbsp;Matikan (OFF) = credit dikurangi <b>GROSS</b>.</label>
+                <input
+                  id="hitcredit"
+                  type="checkbox"
+                  checked={hitCredit}
+                  onChange={(e) => setHitCredit(e.target.checked)}
+                />
+                <label htmlFor="hitcredit">
+                  <b>ON</b> = credit dikurangi <b>NET</b>. &nbsp;Matikan (OFF) =
+                  credit dikurangi <b>GROSS</b>.
+                </label>
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button onClick={()=>setShowSetting(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
-              <button onClick={saveSetting} className="rounded px-4 py-2 bg-blue-600 text-white">Save</button>
+              <button
+                onClick={() => setShowSetting(false)}
+                className="rounded px-4 py-2 bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                onClick={saveSetting}
+                className="rounded px-4 py-2 bg-blue-600 text-white"
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>
@@ -543,11 +597,27 @@ export default function BanksTable() {
 
       {/* ===== Modal DP ===== */}
       {showDP && dpBank && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) setShowDP(false); }}>
-          <form onSubmit={(e)=>{ e.preventDefault(); submitDP(); }} className="bg-white rounded border w-full max-w-2xl mt-10">
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) closeDP();
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitDP();
+            }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
             <div className="p-4 border-b">
-              <div className="font-semibold">Deposit to [{dpBank.bank_code}] {dpBank.account_name} - {dpBank.account_no}</div>
-              <div className="text-xs mt-1">Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b></div>
+              <div className="font-semibold">
+                Deposit to [{dpBank.bank_code}] {dpBank.account_name} -{" "}
+                {dpBank.account_no}
+              </div>
+              <div className="text-xs mt-1">
+                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+              </div>
             </div>
             <div className="p-4 space-y-3">
               {/* Player */}
@@ -559,20 +629,51 @@ export default function BanksTable() {
                     className="border rounded px-3 py-2 w-full"
                     placeholder="search username"
                     value={leadPicked ? (leadPicked.username ?? "") : leadQuery}
-                    onChange={(e)=>{ setLeadPicked(null); setLeadQuery(e.target.value); }}
+                    onChange={(e) => {
+                      setLeadPicked(null);
+                      setLeadQuery(e.target.value);
+                    }}
                     onKeyDown={(e) => {
                       if (!leadPicked && leadOptions.length > 0) {
-                        if (e.key === "ArrowDown") { e.preventDefault(); setLeadIndex((i)=>Math.min(i+1, leadOptions.length-1)); return; }
-                        if (e.key === "ArrowUp")   { e.preventDefault(); setLeadIndex((i)=>Math.max(i-1, 0)); return; }
-                        if (e.key === "Enter")     { e.preventDefault(); const pick = leadOptions[Math.max(0, leadIndex)]; if (pick){ setLeadPicked(pick); setLeadOptions([]);} return; }
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setLeadIndex((i) =>
+                            Math.min(i + 1, leadOptions.length - 1)
+                          );
+                          return;
+                        }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setLeadIndex((i) => Math.max(i - 1, 0));
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const pick = leadOptions[Math.max(0, leadIndex)];
+                          if (pick) {
+                            setLeadPicked(pick);
+                            setLeadOptions([]);
+                          }
+                          return;
+                        }
                       }
                     }}
                   />
                   {!leadPicked && leadOptions.length > 0 && (
                     <div className="absolute z-10 mt-1 max-h-56 overflow-auto w-full border bg-white rounded shadow">
-                      {leadOptions.map((opt, idx)=>(
-                        <div key={opt.id} onClick={()=>{ setLeadPicked(opt); setLeadOptions([]); }} className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 ${idx===leadIndex ? "bg-blue-50":""}`}>
-                          {opt.username} ({opt.bank ?? opt.bank_name} | {opt.name} | {opt.bank_no})
+                      {leadOptions.map((opt, idx) => (
+                        <div
+                          key={opt.id}
+                          onClick={() => {
+                            setLeadPicked(opt);
+                            setLeadOptions([]);
+                          }}
+                          className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 ${
+                            idx === leadIndex ? "bg-blue-50" : ""
+                          }`}
+                        >
+                          {opt.username} ({opt.bank ?? opt.bank_name} |{" "}
+                          {opt.name} | {opt.bank_no})
                         </div>
                       ))}
                     </div>
@@ -586,27 +687,64 @@ export default function BanksTable() {
                   ref={dpAmountRef}
                   className="border rounded px-3 py-2 w-full"
                   value={dpAmountStr}
-                  onFocus={(e)=>e.currentTarget.select()}
-                  onChange={(e)=>{ const f = formatWithGroupingLive(e.target.value); setDpAmountStr(f);
-                    setTimeout(()=>{ const el=dpAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L); }},0);
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setDpAmountStr(f);
+                    setTimeout(() => {
+                      const el = dpAmountRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
                   }}
-                  onBlur={()=>{ const n=toNumber(dpAmountStr); setDpAmountStr(new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)); }}
+                  onBlur={() => {
+                    const n = toNumber(dpAmountStr);
+                    setDpAmountStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
                 />
               </div>
               {/* Tgl */}
               <div>
                 <label className="block text-xs mb-1">Transaction Date</label>
-                <input type="datetime-local" className="border rounded px-3 py-2 w-full" value={dpTxnFinal} onChange={(e)=>setDpTxnFinal(e.target.value)} />
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={dpTxnFinal}
+                  onChange={(e) => setDpTxnFinal(e.target.value)}
+                />
               </div>
               {/* Description */}
               <div>
                 <label className="block text-xs mb-1">Description</label>
-                <textarea rows={3} className="border rounded px-3 py-2 w-full" value={dpDesc} onChange={(e)=>setDpDesc(e.target.value)} />
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={dpDesc}
+                  onChange={(e) => setDpDesc(e.target.value)}
+                />
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={()=>setShowDP(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
-              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
+              <button
+                type="button"
+                onClick={closeDP}
+                className="rounded px-4 py-2 bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="rounded px-4 py-2 bg-blue-600 text-white"
+              >
+                Submit
+              </button>
             </div>
           </form>
         </div>
@@ -614,11 +752,27 @@ export default function BanksTable() {
 
       {/* ===== Modal WD ===== */}
       {showWD && wdBank && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) setShowWD(false); }}>
-          <form onSubmit={(e)=>{ e.preventDefault(); submitWD(); }} className="bg-white rounded border w-full max-w-2xl mt-10">
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) closeWD();
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitWD();
+            }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
             <div className="p-4 border-b">
-              <div className="font-semibold">Withdraw from [{wdBank.bank_code}] {wdBank.account_name} - {wdBank.account_no}</div>
-              <div className="text-xs mt-1">Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b></div>
+              <div className="font-semibold">
+                Withdraw from [{wdBank.bank_code}] {wdBank.account_name} -{" "}
+                {wdBank.account_no}
+              </div>
+              <div className="text-xs mt-1">
+                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+              </div>
             </div>
             <div className="p-4 space-y-3">
               {/* Player */}
@@ -630,20 +784,51 @@ export default function BanksTable() {
                     className="border rounded px-3 py-2 w-full"
                     placeholder="search username"
                     value={leadPicked ? (leadPicked.username ?? "") : leadQuery}
-                    onChange={(e)=>{ setLeadPicked(null); setLeadQuery(e.target.value); }}
+                    onChange={(e) => {
+                      setLeadPicked(null);
+                      setLeadQuery(e.target.value);
+                    }}
                     onKeyDown={(e) => {
                       if (!leadPicked && leadOptions.length > 0) {
-                        if (e.key === "ArrowDown") { e.preventDefault(); setLeadIndex((i)=>Math.min(i+1, leadOptions.length-1)); return; }
-                        if (e.key === "ArrowUp")   { e.preventDefault(); setLeadIndex((i)=>Math.max(i-1, 0)); return; }
-                        if (e.key === "Enter")     { e.preventDefault(); const pick = leadOptions[Math.max(0, leadIndex)]; if (pick){ setLeadPicked(pick); setLeadOptions([]);} return; }
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setLeadIndex((i) =>
+                            Math.min(i + 1, leadOptions.length - 1)
+                          );
+                          return;
+                        }
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setLeadIndex((i) => Math.max(i - 1, 0));
+                          return;
+                        }
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const pick = leadOptions[Math.max(0, leadIndex)];
+                          if (pick) {
+                            setLeadPicked(pick);
+                            setLeadOptions([]);
+                          }
+                          return;
+                        }
                       }
                     }}
                   />
                   {!leadPicked && leadOptions.length > 0 && (
                     <div className="absolute z-10 mt-1 max-h-56 overflow-auto w-full border bg-white rounded shadow">
-                      {leadOptions.map((opt, idx)=>(
-                        <div key={opt.id} onClick={()=>{ setLeadPicked(opt); setLeadOptions([]); }} className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 ${idx===leadIndex ? "bg-blue-50":""}`}>
-                          {opt.username} ({opt.bank ?? opt.bank_name} | {opt.name} | {opt.bank_no})
+                      {leadOptions.map((opt, idx) => (
+                        <div
+                          key={opt.id}
+                          onClick={() => {
+                            setLeadPicked(opt);
+                            setLeadOptions([]);
+                          }}
+                          className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-100 ${
+                            idx === leadIndex ? "bg-blue-50" : ""
+                          }`}
+                        >
+                          {opt.username} ({opt.bank ?? opt.bank_name} |{" "}
+                          {opt.name} | {opt.bank_no})
                         </div>
                       ))}
                     </div>
@@ -657,11 +842,27 @@ export default function BanksTable() {
                   ref={wdAmountRef}
                   className="border rounded px-3 py-2 w-full"
                   value={wdAmountStr}
-                  onFocus={(e)=>e.currentTarget.select()}
-                  onChange={(e)=>{ const f = formatWithGroupingLive(e.target.value); setWdAmountStr(f);
-                    setTimeout(()=>{ const el=wdAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setWdAmountStr(f);
+                    setTimeout(() => {
+                      const el = wdAmountRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
                   }}
-                  onBlur={()=>{ const n=toNumber(wdAmountStr); setWdAmountStr(new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)); }}
+                  onBlur={() => {
+                    const n = toNumber(wdAmountStr);
+                    setWdAmountStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
                 />
               </div>
               {/* Transfer Fee */}
@@ -671,27 +872,64 @@ export default function BanksTable() {
                   ref={wdFeeRef}
                   className="border rounded px-3 py-2 w-full"
                   value={wdFeeStr}
-                  onFocus={(e)=>e.currentTarget.select()}
-                  onChange={(e)=>{ const f = formatWithGroupingLive(e.target.value); setWdFeeStr(f);
-                    setTimeout(()=>{ const el=wdFeeRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setWdFeeStr(f);
+                    setTimeout(() => {
+                      const el = wdFeeRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
                   }}
-                  onBlur={()=>{ const n=toNumber(wdFeeStr); setWdFeeStr(new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)); }}
+                  onBlur={() => {
+                    const n = toNumber(wdFeeStr);
+                    setWdFeeStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
                 />
               </div>
               {/* Tgl */}
               <div>
                 <label className="block text-xs mb-1">Transaction Date</label>
-                <input type="datetime-local" className="border rounded px-3 py-2 w-full" value={wdTxnFinal} onChange={(e)=>setWdTxnFinal(e.target.value)} />
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={wdTxnFinal}
+                  onChange={(e) => setWdTxnFinal(e.target.value)}
+                />
               </div>
               {/* Description */}
               <div>
                 <label className="block text-xs mb-1">Description</label>
-                <textarea rows={3} className="border rounded px-3 py-2 w-full" value={wdDesc} onChange={(e)=>setWdDesc(e.target.value)} />
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={wdDesc}
+                  onChange={(e) => setWdDesc(e.target.value)}
+                />
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={()=>setShowWD(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
-              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
+              <button
+                type="button"
+                onClick={closeWD}
+                className="rounded px-4 py-2 bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="rounded px-4 py-2 bg-blue-600 text-white"
+              >
+                Submit
+              </button>
             </div>
           </form>
         </div>
@@ -699,40 +937,244 @@ export default function BanksTable() {
 
       {/* ===== Modal PDP ===== */}
       {showPDP && pdpBank && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
-             onMouseDown={(e)=>{ if (e.currentTarget===e.target) setShowPDP(false); }}>
-          <form onSubmit={(e)=>{ e.preventDefault(); submitPDP(); }}
-                className="bg-white rounded border w-full max-w-2xl mt-10">
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) closePDP();
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitPDP();
+            }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
             <div className="p-4 border-b">
               <div className="font-semibold">
-                Pending Deposit untuk [{pdpBank.bank_code}] {pdpBank.account_name} - {pdpBank.account_no}
+                Pending Deposit untuk [{pdpBank.bank_code}] {pdpBank.account_name} -{" "}
+                {pdpBank.account_no}
               </div>
-              <div className="text-xs mt-1">Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b></div>
+              <div className="text-xs mt-1">
+                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+              </div>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-xs mb-1">Amount (Gross)</label>
-                <input ref={pdpAmountRef} className="border rounded px-3 py-2 w-full"
-                       value={pdpAmountStr}
-                       onFocus={(e)=>e.currentTarget.select()}
-                       onChange={(e)=>{ const f=formatWithGroupingLive(e.target.value); setPdpAmountStr(f);
-                         setTimeout(()=>{ const el=pdpAmountRef.current; if(el){const L=el.value.length; el.setSelectionRange(L,L);} },0); }}
-                       onBlur={()=>{ const n=toNumber(pdpAmountStr); setPdpAmountStr(new Intl.NumberFormat("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)); }} />
+                <input
+                  ref={pdpAmountRef}
+                  className="border rounded px-3 py-2 w-full"
+                  value={pdpAmountStr}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setPdpAmountStr(f);
+                    setTimeout(() => {
+                      const el = pdpAmountRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
+                  }}
+                  onBlur={() => {
+                    const n = toNumber(pdpAmountStr);
+                    setPdpAmountStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
+                />
               </div>
               <div>
                 <label className="block text-xs mb-1">Transaction Date</label>
-                <input type="datetime-local" className="border rounded px-3 py-2 w-full"
-                       value={pdpTxnFinal} onChange={(e)=>setPdpTxnFinal(e.target.value)} />
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={pdpTxnFinal}
+                  onChange={(e) => setPdpTxnFinal(e.target.value)}
+                />
               </div>
               <div>
                 <label className="block text-xs mb-1">Description</label>
-                <textarea rows={3} className="border rounded px-3 py-2 w-full"
-                          value={pdpDesc} onChange={(e)=>setPdpDesc(e.target.value)} />
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={pdpDesc}
+                  onChange={(e) => setPdpDesc(e.target.value)}
+                />
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={()=>setShowPDP(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
-              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
+              <button
+                type="button"
+                onClick={closePDP}
+                className="rounded px-4 py-2 bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="rounded px-4 py-2 bg-blue-600 text-white"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ===== Modal TT ===== */}
+      {showTT && ttBankFrom && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) closeTT();
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitTT();
+            }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
+            <div className="p-4 border-b">
+              <div className="font-semibold">
+                Transfer from [{ttBankFrom.bank_code}] {ttBankFrom.account_name} -{" "}
+                {ttBankFrom.account_no}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs mb-1">Jumlah Transfer</label>
+                <input
+                  ref={ttAmountRef}
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttAmountStr}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setTtAmountStr(f);
+                    setTimeout(() => {
+                      const el = ttAmountRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
+                  }}
+                  onBlur={() => {
+                    const n = toNumber(ttAmountStr);
+                    setTtAmountStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">Biaya Transfer</label>
+                <input
+                  ref={ttFeeRef}
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttFeeStr}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setTtFeeStr(f);
+                    setTimeout(() => {
+                      const el = ttFeeRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
+                  }}
+                  onBlur={() => {
+                    const n = toNumber(ttFeeStr);
+                    setTtFeeStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">
+                  Waktu Transaksi Bank Asal
+                </label>
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttFromAt}
+                  onChange={(e) => setTtFromAt(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">Bank Tujuan</label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttBankToId ?? ""}
+                  onChange={(e) => setTtBankToId(Number(e.target.value))}
+                >
+                  <option value="">Pilih bank tujuan</option>
+                  {bankToOptions(ttBankFrom).map((b) => (
+                    <option key={b.id} value={b.id}>
+                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">
+                  Waktu Transaksi Bank Tujuan
+                </label>
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttToAt}
+                  onChange={(e) => setTtToAt(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={ttDesc}
+                  onChange={(e) => setTtDesc(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeTT}
+                className="rounded px-4 py-2 bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="rounded px-4 py-2 bg-blue-600 text-white"
+              >
+                Submit
+              </button>
             </div>
           </form>
         </div>
