@@ -130,6 +130,9 @@ export default function BanksTable() {
   const ttAmountRef = useRef<HTMLInputElement | null>(null);
   const ttFeeRef = useRef<HTMLInputElement | null>(null);
 
+  const closeNew = useCallback(() => setShowNew(false), []);
+  const openNew  = useCallback(() => setShowNew(true), []);
+
   const closeDP = useCallback(() => setShowDP(false), []);
   const openDPFor = (b: BankRow) => {
     setDpBank(b);
