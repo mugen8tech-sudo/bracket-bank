@@ -244,7 +244,7 @@ export default function PendingDepositsTable() {
                     <div className="border-t my-1"></div>
                     <div className="">{r.description ?? ""}</div>
                   </td>
-                  <td className="text-left">{formatAmount(r.amount_gross)}</td>
+                  <td className="text-left">{formatAmount(r.amount_net)}</td>
                   <td>{new Date(r.txn_at_final).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</td>
                   <td>
                     {r.is_assigned
@@ -291,7 +291,7 @@ export default function PendingDepositsTable() {
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><div className="text-gray-500">Amount</div><div className="font-medium">{formatAmount(assignRow.amount_gross)}</div></div>
+                <div><div className="text-gray-500">Amount</div><div className="font-medium">{formatAmount(assignRow.amount_net)}</div></div>
                 <div><div className="text-gray-500">Tgl Transaksi</div><div className="font-medium">{new Date(assignRow.txn_at_final).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</div></div>
               </div>
               <div>
