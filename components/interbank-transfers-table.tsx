@@ -169,7 +169,7 @@ export default function InterbankTransfersTable() {
                   </td>
                   <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                   <td>
-                    <a href={`/interbank_transfers/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a>
+                    <a href={`/interbank-transfers/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a>
                   </td>
                 </tr>
               ))
