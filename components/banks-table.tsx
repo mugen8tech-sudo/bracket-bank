@@ -72,6 +72,15 @@ export default function BanksTable() {
   const [showSetting, setShowSetting] = useState(false);
   const [hitCredit, setHitCredit] = useState<boolean>(true);
 
+  // ====== NEW BANK modal ======
+  const [showNew, setShowNew] = useState(false);
+  const [nbBankCode, setNbBankCode] = useState<string>("");
+  const [nbAccName, setNbAccName] = useState<string>("");
+  const [nbAccNo, setNbAccNo] = useState<string>("");
+  const [nbIsPulsa, setNbIsPulsa] = useState<boolean>(false);
+  const [nbDirectFeeEnabled, setNbDirectFeeEnabled] = useState<boolean>(false);
+  const [nbDirectFeePct, setNbDirectFeePct] = useState<string>("0.00");
+
   // ====== DP modal ======
   const [showDP, setShowDP] = useState(false);
   const [dpBank, setDpBank] = useState<BankRow | null>(null);
@@ -176,6 +185,7 @@ export default function BanksTable() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (showNew) closeNew();
         if (showDP) closeDP();
         if (showWD) closeWD();
         if (showPDP) closePDP();
@@ -185,7 +195,14 @@ export default function BanksTable() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showDP, showWD, showPDP, showTT, showSetting, closeDP, closeWD, closePDP, closeTT]);
+  }, [showNew, showDP, showWD, showPDP, showTT, showSetting, closeNew, closeDP, closeWD, closePDP, closeTT]);
+
+  // Listener event (kompatibel dengan tombol existing yang dispatch "open-bank-new")
+  useEffect(() => {
+    const open = () => setShowNew(true);
+    document.addEventListener("open-bank-new", open as EventListener);
+    return () => document.removeEventListener("open-bank-new", open as EventListener);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -258,6 +275,55 @@ export default function BanksTable() {
       active = false;
     };
   }, [leadQuery, showDP, showWD, supabase]);
+
+  /* ========== Submit NEW BANK ========== */
+  const submitNewBank = async () => {
+    const bankCode = nbBankCode.trim();
+    const accName  = nbAccName.trim();
+    const accNo    = nbAccNo.trim();
+
+    if (!bankCode) { alert("Bank Provider wajib dipilih"); return; }
+    if (!accName)  { alert("Account Name wajib diisi"); return; }
+    if (!accNo)    { alert("Account No wajib diisi"); return; }
+
+    let pct = 0;
+    if (nbDirectFeeEnabled) {
+      const p = Number(nbDirectFeePct);
+      if (Number.isNaN(p)) { alert("Persentase potongan harus angka"); return; }
+      if (p < 0 || p > 100) { alert("Persentase potongan 0–100%"); return; }
+      pct = Math.round(p * 100) / 100;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: prof, error: eProf } = await supabase
+      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
+    if (eProf || !prof?.tenant_id) { alert(eProf?.message ?? "Tenant tidak ditemukan"); return; }
+
+    const { error } = await supabase
+      .from("banks")
+      .insert({
+        tenant_id: prof.tenant_id,
+        bank_code: bankCode,
+        account_name: accName,
+        account_no: accNo,
+        usage_type: "neutral",
+        is_active: true,
+        is_pulsa: nbIsPulsa,
+        direct_fee_enabled: nbDirectFeeEnabled,
+        direct_fee_percent: pct,
+        balance: 0
+      })
+      .select()
+      .single();
+
+    if (error) { alert(error.message); return; }
+
+    // reset & refresh
+    setShowNew(false);
+    setNbBankCode(""); setNbAccName(""); setNbAccNo("");
+    setNbIsPulsa(false); setNbDirectFeeEnabled(false); setNbDirectFeePct("0.00");
+    await load();
+  };
 
   /* ========== Submit DP ========== */
   const submitDP = async () => {
