@@ -65,7 +65,7 @@ export default function DepositsTable() {
 
     const { data, error } = await supabase
       .from("deposits")
-      .select("amount_gross, username_snapshot")
+      .select("amount_net, username_snapshot")
       .gte("txn_at_final", s)
       .lte("txn_at_final", e)
       .eq("is_deleted", false);
@@ -75,9 +75,9 @@ export default function DepositsTable() {
       return;
     }
     const list =
-      ((data ?? []) as { amount_gross: number; username_snapshot: string }[]) ||
+      ((data ?? []) as { amount_net: number; username_snapshot: string }[]) ||
       [];
-    setSumToday(list.reduce((a, b) => a + Number(b.amount_gross || 0), 0));
+    setSumToday(list.reduce((a, b) => a + Number(b.amount_net || 0), 0));
     setCountToday(list.length);
     setPlayersToday(new Set(list.map((x) => x.username_snapshot)).size);
   };
@@ -310,7 +310,7 @@ export default function DepositsTable() {
                   </td>
                   <td>{r.username_snapshot}</td>
                   {/* Amount rata kiri */}
-                  <td className="text-left">{formatAmount(r.amount_gross)}</td>
+                  <td className="text-left">{formatAmount(r.amount_net)}</td>
                   <td>
                     {new Date(r.txn_at_final).toLocaleString("id-ID", {
                       timeZone: "Asia/Jakarta",
@@ -428,7 +428,7 @@ export default function DepositsTable() {
                   </tr>
                   <tr>
                     <td>Jumlah</td>
-                    <td>{formatAmount(delRow.amount_gross)}</td>
+                    <td>{formatAmount(delRow.amount_net)}</td>
                   </tr>
                   <tr>
                     <td>Direct Fee</td>
