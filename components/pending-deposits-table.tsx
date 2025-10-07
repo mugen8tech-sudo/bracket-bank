@@ -137,7 +137,7 @@ export default function PendingDepositsTable() {
       const { data, error } = await supabase
         .from("leads")
         .select("id, username, name, bank, bank_name, bank_no")
-        .ilike("username", `%${q}%`)
+        .ilike("username", q)
         .limit(10);
       if(!active) return;
       if(error){ console.error(error); return; }
