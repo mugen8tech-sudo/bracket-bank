@@ -192,7 +192,7 @@ export default function LeadsTable() {
       const { count, error } = await q;
       if (error) { alert(error.message); return; }
       if ((count ?? 0) > 0) {
-        alert("Nomor rekening sudah dipakai di tenant ini.");
+        alert("Nomor rekening sudah terdaftar.");
         return;
       }
     }
@@ -207,7 +207,7 @@ export default function LeadsTable() {
       const { count, error } = await q;
       if (error) { alert(error.message); return; }
       if ((count ?? 0) > 0) {
-        alert("Whatsapp/HP sudah dipakai di tenant ini.");
+        alert("Whatsapp/HP sudah terdaftar.");
         return;
       }
     }
@@ -245,7 +245,7 @@ export default function LeadsTable() {
     // Tangani duplikat dari constraint DB (fallback)
     if (error) {
       if ((error as any).code === "23505" || /duplicate key value/i.test(error.message)) {
-        alert("Duplikat data: Bank No atau Whatsapp/HP sudah ada di tenant ini.");
+        alert("Nomor Rekening atau Whatsapp/HP sudah terdaftar.");
       } else {
         alert(error.message);
       }
