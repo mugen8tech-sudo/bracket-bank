@@ -201,7 +201,7 @@ export default function BanksTable() {
       const { data, error } = await supabase
         .from("leads")
         .select("id, username, name, bank, bank_name, bank_no")
-        .ilike("username", `%${q}%`)
+        .ilike("username", query.trim())   // <- tanpa wildcard
         .limit(10);
       if (!active) return;
       if (error) { console.error(error); return; }
