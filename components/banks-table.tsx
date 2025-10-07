@@ -27,6 +27,12 @@ type LeadLite = {
   bank_no: string | null;
 };
 
+const BANK_CODES = [
+  "BCA","BRI","BNI","MANDIRI","BSI","CIMB","PERMATA",
+  "SEABANK","JAGO","DANA","OVO","GOPAY","SHOPEEPAY",
+  "LINKAJA","SAKUKU","OTHER"
+];
+
 /* ---------- Helpers amount (live grouping) ---------- */
 function formatWithGroupingLive(raw: string) {
   let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
