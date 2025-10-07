@@ -167,21 +167,63 @@ export default function LeadsTable() {
       .select("tenant_id")
       .eq("user_id", user?.id)
       .single();
-    if (eProf) {
-      alert(eProf.message);
+    if (eProf || !prof?.tenant_id) {
+      alert(eProf?.message ?? "Tenant tidak ditemukan");
       return;
     }
 
+    // --- Wajib isi + normalisasi ---
+    const bankNo = (form.bank_no ?? "").toString().trim();
+    const phone  = (form.phone_number ?? "").toString().trim();
+    if (!bankNo) { alert("Bank No wajib diisi"); return; }
+    if (!phone)  { alert("Whatsapp/HP wajib diisi"); return; }
+
+    // --- Cek duplikat per tenant (RLS membatasi otomatis, tapi kita tambahkan tenant_id biar eksplisit) ---
+    const tenantId = prof.tenant_id as string;
+    const isCreate = !editing;
+    // Cek bank_no
+    {
+      let q = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("bank_no", bankNo);
+      if (!isCreate) q = q.neq("id", editing!.id);
+      const { count, error } = await q;
+      if (error) { alert(error.message); return; }
+      if ((count ?? 0) > 0) {
+        alert("Nomor rekening sudah dipakai di tenant ini.");
+        return;
+      }
+    }
+    // Cek phone_number
+    {
+      let q = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("phone_number", phone);
+      if (!isCreate) q = q.neq("id", editing!.id);
+      const { count, error } = await q;
+      if (error) { alert(error.message); return; }
+      if ((count ?? 0) > 0) {
+        alert("Whatsapp/HP sudah dipakai di tenant ini.");
+        return;
+      }
+    }
+
+    // --- Payload yang disimpan (pakai nilai yang sudah di-trim) ---
     const payload: any = {
-      username: form.username ?? null,
-      name: form.name,
-      bank_name: form.bank_name ?? null,
-      bank: form.bank ?? null,
-      bank_no: form.bank_no ?? null,
-      phone_number: form.phone_number ?? null, // Whatsapp
-      tenant_id: prof?.tenant_id, // RLS check
+      username: (form.username ?? null) as string | null,
+      name: (form.name ?? "").toString(),
+      bank_name: (form.bank_name ?? null) as string | null,
+      bank: (form.bank ?? null) as string | null,
+      bank_no: bankNo,
+      phone_number: phone, // Whatsapp/HP
+      tenant_id: tenantId, // RLS check
     };
 
+    // Insert / Update
     let error;
     if (editing) {
       const resp = await supabase
@@ -200,15 +242,18 @@ export default function LeadsTable() {
       error = resp.error;
     }
 
+    // Tangani duplikat dari constraint DB (fallback)
     if (error) {
-      alert(error.message);
+      if ((error as any).code === "23505" || /duplicate key value/i.test(error.message)) {
+        alert("Duplikat data: Bank No atau Whatsapp/HP sudah ada di tenant ini.");
+      } else {
+        alert(error.message);
+      }
       return;
     }
+
     setShowForm(false);
-    // Jika record baru, kemungkinan muncul di halaman 1 (karena sort desc)
-    // supaya langsung terlihat, kembali ke halaman 1
-    if (!editing) await load(1);
-    else await load(page);
+    if (!editing) await load(1); else await load(page);
   };
 
   const onSubmitModal: React.FormEventHandler<HTMLFormElement> = async (e) => {
@@ -540,6 +585,8 @@ export default function LeadsTable() {
                   onChange={(e) =>
                     setForm((p) => ({ ...p, bank_no: e.target.value }))
                   }
+                  required
+                  inputMode="numeric"
                 />
               </div>
               <div>
@@ -551,6 +598,8 @@ export default function LeadsTable() {
                   onChange={(e) =>
                     setForm((p) => ({ ...p, phone_number: e.target.value }))
                   }
+                  required
+                  inputMode="numeric"
                 />
               </div>
             </div>
