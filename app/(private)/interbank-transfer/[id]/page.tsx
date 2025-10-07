@@ -88,7 +88,7 @@ export default function Page({ params }: { params: { id: string } }) {
         </table>
       </div>
 
-      <Link href="/interbank-transfers" className="rounded bg-gray-100 px-4 py-2 inline-block">Back</Link>
+      <Link href="/interbank-transfer" className="rounded bg-gray-100 px-4 py-2 inline-block">Back</Link>
     </div>
   );
 }
