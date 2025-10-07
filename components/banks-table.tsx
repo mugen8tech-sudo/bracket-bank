@@ -74,6 +74,15 @@ export default function BanksTable() {
   const [showSetting, setShowSetting] = useState(false);
   const [hitCredit, setHitCredit] = useState<boolean>(true);
 
+  // ====== NEW BANK modal ======
+  const [showNew, setShowNew] = useState(false);
+  const [nbBankCode, setNbBankCode] = useState<string>("");
+  const [nbAccName, setNbAccName] = useState<string>("");
+  const [nbAccNo, setNbAccNo] = useState<string>("");
+  const [nbIsPulsa, setNbIsPulsa] = useState<boolean>(false);
+  const [nbDirectFeeEnabled, setNbDirectFeeEnabled] = useState<boolean>(false);
+  const [nbDirectFeePct, setNbDirectFeePct] = useState<string>("0.00");
+
   // ====== DP modal ======
   const [showDP, setShowDP] = useState(false);
   const [dpBank, setDpBank] = useState<BankRow | null>(null);
@@ -112,6 +121,9 @@ export default function BanksTable() {
   const wdFeeRef    = useRef<HTMLInputElement | null>(null);
   const pdpAmountRef = useRef<HTMLInputElement | null>(null);
 
+  const closeNew = useCallback(() => setShowNew(false), []);
+  const openNew  = useCallback(() => setShowNew(true), []);
+
   const closeDP = useCallback(() => setShowDP(false), []);
   const openDPFor = (b: BankRow) => {
     setDpBank(b); setShowDP(true);
@@ -138,10 +150,11 @@ export default function BanksTable() {
     setPdpAmountStr("0.00"); setPdpDesc("");
   };
 
-  // ESC close (DP/WD/Setting)
+  // ESC close untuk semua modal (tambahkan showNew di sini)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (showNew) closeNew();
         if (showDP) closeDP();
         if (showWD) closeWD();
         if (showPDP) closePDP();
@@ -150,7 +163,14 @@ export default function BanksTable() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showDP, showWD, showPDP, showSetting, closeDP, closeWD, closePDP]);
+  }, [showNew, showDP, showWD, showPDP, showSetting, closeNew, closeDP, closeWD, closePDP]);
+
+  // Listener event (kompatibel dengan tombol existing yang dispatch "open-bank-new")
+  useEffect(() => {
+    const open = () => setShowNew(true);
+    document.addEventListener("open-bank-new", open as EventListener);
+    return () => document.removeEventListener("open-bank-new", open as EventListener);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -190,7 +210,7 @@ export default function BanksTable() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  // cari lead by username (untuk DP & WD)
+  // cari lead by username (untuk DP & WD) - EXACT (tanpa wildcard)
   useEffect(() => {
     let active = true;
     (async () => {
@@ -201,7 +221,7 @@ export default function BanksTable() {
       const { data, error } = await supabase
         .from("leads")
         .select("id, username, name, bank, bank_name, bank_no")
-        .ilike("username", `%${q}%`)
+        .ilike("username", q) // exact (case-insensitive)
         .limit(10);
       if (!active) return;
       if (error) { console.error(error); return; }
@@ -210,6 +230,55 @@ export default function BanksTable() {
     })();
     return () => { active = false; };
   }, [leadQuery, showDP, showWD, supabase]);
+
+  /* ========== Submit NEW BANK ========== */
+  const submitNewBank = async () => {
+    const bankCode = nbBankCode.trim();
+    const accName  = nbAccName.trim();
+    const accNo    = nbAccNo.trim();
+
+    if (!bankCode) { alert("Bank Provider wajib dipilih"); return; }
+    if (!accName)  { alert("Account Name wajib diisi"); return; }
+    if (!accNo)    { alert("Account No wajib diisi"); return; }
+
+    let pct = 0;
+    if (nbDirectFeeEnabled) {
+      const p = Number(nbDirectFeePct);
+      if (Number.isNaN(p)) { alert("Persentase potongan harus angka"); return; }
+      if (p < 0 || p > 100) { alert("Persentase potongan 0–100%"); return; }
+      pct = Math.round(p * 100) / 100;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: prof, error: eProf } = await supabase
+      .from("profiles").select("tenant_id").eq("user_id", user?.id).single();
+    if (eProf || !prof?.tenant_id) { alert(eProf?.message ?? "Tenant tidak ditemukan"); return; }
+
+    const { error } = await supabase
+      .from("banks")
+      .insert({
+        tenant_id: prof.tenant_id,
+        bank_code: bankCode,
+        account_name: accName,
+        account_no: accNo,
+        usage_type: "neutral",
+        is_active: true,
+        is_pulsa: nbIsPulsa,
+        direct_fee_enabled: nbDirectFeeEnabled,
+        direct_fee_percent: pct,
+        balance: 0
+      })
+      .select()
+      .single();
+
+    if (error) { alert(error.message); return; }
+
+    // reset & refresh
+    setShowNew(false);
+    setNbBankCode(""); setNbAccName(""); setNbAccNo("");
+    setNbIsPulsa(false); setNbDirectFeeEnabled(false); setNbDirectFeePct("0.00");
+    await load();
+  };
 
   /* ========== Submit DP ========== */
   const submitDP = async () => {
@@ -231,7 +300,7 @@ export default function BanksTable() {
       p_description: dpDesc || null
     });
     if (error) { alert(error.message); return; }
-    closeDP(); await load();
+    setShowDP(false); await load();
   };
 
   /* ========== Submit WD ========== */
@@ -256,7 +325,7 @@ export default function BanksTable() {
       p_description: wdDesc || null
     });
     if (error) { alert(error.message); return; }
-    closeWD(); await load();
+    setShowWD(false); await load();
   };
 
   /* ========== Submit PDP ========== */
@@ -273,7 +342,7 @@ export default function BanksTable() {
       p_description: pdpDesc || null
     });
     if (error) { alert(error.message); return; }
-    closePDP(); await load();
+    setShowPDP(false); await load();
   };
 
   const saveSetting = async () => {
@@ -303,8 +372,21 @@ export default function BanksTable() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end gap-2">
-        <button type="button" onClick={() => setShowSetting(true)} className="rounded bg-gray-100 px-4 py-2" title="Pengaturan dampak potongan langsung ke credit tenant">Setting Potongan → Credit</button>
-        <button type="button" onClick={() => { const evt = new CustomEvent("open-bank-new"); document.dispatchEvent(evt); }} className="rounded bg-green-600 text-white px-4 py-2">New Record</button>
+        <button
+          type="button"
+          onClick={() => setShowSetting(true)}
+          className="rounded bg-gray-100 px-4 py-2"
+          title="Pengaturan dampak potongan langsung ke credit tenant"
+        >
+          Setting Potongan → Credit
+        </button>
+        <button
+          type="button"
+          onClick={openNew}
+          className="rounded bg-green-600 text-white px-4 py-2"
+        >
+          New Record
+        </button>
       </div>
 
       <div className="overflow-auto rounded border bg-white">
@@ -361,6 +443,84 @@ export default function BanksTable() {
         </table>
       </div>
 
+      {/* ===== Modal New Bank ===== */}
+      {showNew && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e) => { if (e.currentTarget === e.target) closeNew(); }}
+        >
+          <form
+            onSubmit={(e) => { e.preventDefault(); submitNewBank(); }}
+            className="bg-white rounded border w-full max-w-xl mt-10"
+          >
+            <div className="p-4 border-b font-semibold">New Bank</div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs mb-1">Bank Provider</label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={nbBankCode}
+                  onChange={(e)=>setNbBankCode(e.target.value)}
+                  required
+                >
+                  <option value="">Pilih bank</option>
+                  {BANK_CODES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs mb-1">Account Name</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={nbAccName}
+                    onChange={(e)=>setNbAccName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Account No</label>
+                  <input
+                    className="border rounded px-3 py-2 w-full"
+                    value={nbAccNo}
+                    onChange={(e)=>setNbAccNo(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input id="nb_pulsa" type="checkbox" checked={nbIsPulsa} onChange={(e)=>setNbIsPulsa(e.target.checked)} />
+                <label htmlFor="nb_pulsa">Is Pulsa?</label>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input id="nb_df" type="checkbox" checked={nbDirectFeeEnabled} onChange={(e)=>setNbDirectFeeEnabled(e.target.checked)} />
+                  <label htmlFor="nb_df">Potongan Langsung?</label>
+                </div>
+                {nbDirectFeeEnabled && (
+                  <div>
+                    <label className="block text-xs mb-1">Persentase Potongan (%)</label>
+                    <input
+                      type="number" min={0} max={100} step="0.01"
+                      className="border rounded px-3 py-2 w-full"
+                      value={nbDirectFeePct}
+                      onChange={(e)=>setNbDirectFeePct(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button type="button" onClick={closeNew} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Save</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ===== Modal Setting ===== */}
       {showSetting && (
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e) => { if (e.currentTarget === e.target) setShowSetting(false); }}>
@@ -383,7 +543,7 @@ export default function BanksTable() {
 
       {/* ===== Modal DP ===== */}
       {showDP && dpBank && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) closeDP(); }}>
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) setShowDP(false); }}>
           <form onSubmit={(e)=>{ e.preventDefault(); submitDP(); }} className="bg-white rounded border w-full max-w-2xl mt-10">
             <div className="p-4 border-b">
               <div className="font-semibold">Deposit to [{dpBank.bank_code}] {dpBank.account_name} - {dpBank.account_no}</div>
@@ -445,7 +605,7 @@ export default function BanksTable() {
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={closeDP} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="button" onClick={()=>setShowDP(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
@@ -454,7 +614,7 @@ export default function BanksTable() {
 
       {/* ===== Modal WD ===== */}
       {showWD && wdBank && (
-        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) closeWD(); }}>
+        <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4" onMouseDown={(e)=>{ if (e.currentTarget === e.target) setShowWD(false); }}>
           <form onSubmit={(e)=>{ e.preventDefault(); submitWD(); }} className="bg-white rounded border w-full max-w-2xl mt-10">
             <div className="p-4 border-b">
               <div className="font-semibold">Withdraw from [{wdBank.bank_code}] {wdBank.account_name} - {wdBank.account_no}</div>
@@ -530,7 +690,7 @@ export default function BanksTable() {
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={closeWD} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="button" onClick={()=>setShowWD(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
@@ -540,7 +700,7 @@ export default function BanksTable() {
       {/* ===== Modal PDP ===== */}
       {showPDP && pdpBank && (
         <div className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
-             onMouseDown={(e)=>{ if (e.currentTarget===e.target) closePDP(); }}>
+             onMouseDown={(e)=>{ if (e.currentTarget===e.target) setShowPDP(false); }}>
           <form onSubmit={(e)=>{ e.preventDefault(); submitPDP(); }}
                 className="bg-white rounded border w-full max-w-2xl mt-10">
             <div className="p-4 border-b">
@@ -571,7 +731,7 @@ export default function BanksTable() {
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
-              <button type="button" onClick={closePDP} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="button" onClick={()=>setShowPDP(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
