@@ -984,11 +984,11 @@ export default function BanksTable() {
                 <input
                   ref={dpAmountRef}
                   className="border rounded px-3 py-2 w-full"
-                  value={dpAmountRef}
+                  value={dpAmountStr}
                   onFocus={(e)=>e.currentTarget.select()}
                   onChange={(e)=>{
                     const f = formatWithGroupingLiveSigned(e.target.value);
-                    dpAmountRef(f);
+                    setDpAmountStr(f);
                     setTimeout(()=>{ const el=dpAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
                   }}
                   onBlur={()=>{
