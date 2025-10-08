@@ -33,6 +33,18 @@ const BANK_CODES = [
   "LINKAJA","SAKUKU","OTHER"
 ];
 
+const EXPENSE_CATEGORY_CODES = [
+  "AIR", "BELI REKENING", "BONUS CRM", "BONUS CS", "BONUS MEMBER",
+  "BONUS PLAYER", "BONUS SPV", "BONUS TELE", "DATABASE", "DOMAIN & HOSTING",
+  "ENTERTAINMENT", "GAJI CS", "GAJI CS WA BLAST", "GAJI DESIGN", "GAJI FINANCE",
+  "GAJI HEAD CS", "GAJI HEAD WA BLAST", "GAJI OB", "GAJI PAID ADS", "GAJI SEO",
+  "GAJI SPV", "GAJI SPV CRM", "GAJI TELE", "IKLAN", "INTERNET", "INTERNET SEHAT (NAWALA)",
+  "IP FEE", "KEAMANAN", "KEBERSIHAN", "KESEHATAN", "KOORDINASI", "LAIN-LAIN", "LAUNDRY",
+  "LISTRIK", "LIVECHAT", "MAINTENANCE", "MAKAN", "PANTRY", "PAYPAL", "PERALATAN", "PERLENGKAPAN",
+  "PULSA", "RENOVASI FURNITURE & ELECTRONIC", "RENOVASI SIPIL", "SEO", "SETUP FEE (APK)",
+  "SEWA", "SKYPE", "SMS BLAST", "THR", "TICKET & TRANSPORTASI", "MAINTENANCE FEE", "OTHER EXPENSE", "MISTAKE CS"
+];
+
 /* ---------- Helpers amount (live grouping) ---------- */
 function formatWithGroupingLive(raw: string) {
   let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
@@ -85,6 +97,22 @@ function toNumberSigned(input: string) {
   s = s.replace(/-/g, "");                    // parsing sebagai absolut
   const n = toNumber(s);                      // helper existing
   return isNeg ? -n : n;
+}
+
+// === Helpers untuk Biaya (selalu negatif) ===
+function formatWithGroupingLiveNegative(raw: string) {
+  // pakai formatter existing -> tambahkan '-' bila ada nilai > 0
+  const grouped = formatWithGroupingLive(raw);
+  // biarkan 0 atau kosong tanpa tanda minus saat mengetik
+  if (!grouped || grouped === "0" || grouped === "0." || /^0(\.0{0,2})?$/.test(grouped)) {
+    return grouped;
+  }
+  return grouped.startsWith("-") ? grouped : "-" + grouped;
+}
+function toNegativeNumber(input: string) {
+  const n = toNumber(input); // baca absolutnya
+  if (n === 0) return 0;
+  return -Math.abs(n);
 }
 
 export default function BanksTable() {
@@ -151,6 +179,15 @@ export default function BanksTable() {
   const [adjTxnFinal, setAdjTxnFinal] = useState<string>(nowLocalDatetimeValue());
   const [adjDesc, setAdjDesc] = useState<string>("");
 
+  // ====== BIAYA modal ======
+  const [showExpense, setShowExpense] = useState(false);
+  const [expenseBank, setExpenseBank] = useState<BankRow | null>(null);
+  const [expenseOpenedISO, setExpenseOpenedISO] = useState<string>("");
+  const [expenseTxnFinal, setExpenseTxnFinal] = useState<string>(nowLocalDatetimeValue());
+  const [expenseAmountStr, setExpenseAmountStr] = useState<string>("0.00");
+  const [expenseCategory, setExpenseCategory] = useState<string>(EXPENSE_CATEGORY_CODES[0] ?? "");
+  const [expenseDesc, setExpenseDesc] = useState<string>("");
+
   // player search states (dipakai DP & WD)
   const [leadQuery, setLeadQuery] = useState<string>("");
   const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
@@ -165,6 +202,7 @@ export default function BanksTable() {
   const ttAmountRef = useRef<HTMLInputElement | null>(null);
   const ttFeeRef = useRef<HTMLInputElement | null>(null);
   const adjAmountRef = useRef<HTMLInputElement | null>(null);
+  const expenseAmountRef = useRef<HTMLInputElement | null>(null);
 
   const closeNew = useCallback(() => setShowNew(false), []);
   const openNew  = useCallback(() => setShowNew(true), []);
@@ -231,6 +269,18 @@ export default function BanksTable() {
     setTimeout(()=>adjAmountRef.current?.select(), 0);
   };
 
+  const closeExpense = useCallback(() => setShowExpense(false), []);
+  const openExpenseFor = (b: BankRow) => {
+    setExpenseBank(b);
+    setShowExpense(true);
+    setExpenseOpenedISO(new Date().toISOString());
+    setExpenseTxnFinal(nowLocalDatetimeValue());
+    setExpenseAmountStr("0.00");
+    setExpenseCategory(EXPENSE_CATEGORY_CODES[0] ?? "");
+    setExpenseDesc("");
+    setTimeout(()=>expenseAmountRef.current?.select(), 0);
+  };
+
   // ESC close (DP/WD/PDP/TT/Setting)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -241,6 +291,7 @@ export default function BanksTable() {
         if (showPDP) closePDP();
         if (showTT) closeTT();
         if (showAdj) closeAdj();
+        if (showExpense) closeExpense();
         if (showSetting) setShowSetting(false);
       }
     };
@@ -522,6 +573,28 @@ export default function BanksTable() {
     await load();
   };
 
+  /* ========== Submit BIAYA ========== */
+  const submitExpense = async () => {
+    if (!expenseBank) return;
+    const amt = toNegativeNumber(expenseAmountStr); // negatif otomatis
+    if (amt === 0) {
+      alert("Amount harus lebih dari 0.");
+      expenseAmountRef.current?.focus();
+      return;
+    }
+    const { error } = await supabase.rpc("perform_bank_expense", {
+      p_bank_id: expenseBank.id,
+      p_amount: amt, // sudah negatif
+      p_txn_at_opened: expenseOpenedISO,
+      p_txn_at_final: new Date(expenseTxnFinal).toISOString(),
+      p_category_code: expenseCategory || null,
+      p_description: expenseDesc || null,
+    });
+    if (error) { alert(error.message); return; }
+    closeExpense();
+    await load();
+  };
+
   const saveSetting = async () => {
     const {
       data: { user },
@@ -678,7 +751,13 @@ export default function BanksTable() {
                         >
                           Adj
                         </button>
-                        <DisabledBtn label="Biaya" title="Biaya (coming soon)" />
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Biaya"
+                          onClick={() => openExpenseFor(r)}
+                        >
+                          Biaya
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1455,6 +1534,88 @@ export default function BanksTable() {
 
             <div className="border-t p-4 flex justify-end gap-2">
               <button type="button" onClick={closeAdj} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ===== Modal BIAYA ===== */}
+      {showExpense && expenseBank && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e)=>{ if(e.currentTarget===e.target) closeExpense(); }}
+        >
+          <form
+            onSubmit={(e)=>{ e.preventDefault(); submitExpense(); }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
+            <div className="p-4 border-b">
+              <div className="font-semibold">
+                Biaya FROM [{expenseBank.bank_code}] {expenseBank.account_name} - {expenseBank.account_no}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {/* Amount (selalu minus) */}
+              <div>
+                <label className="block text-xs mb-1">Amount</label>
+                <input
+                  ref={expenseAmountRef}
+                  className="border rounded px-3 py-2 w-full"
+                  value={expenseAmountStr}
+                  onFocus={(e)=>e.currentTarget.select()}
+                  onChange={(e)=>{
+                    const f = formatWithGroupingLiveNegative(e.target.value);
+                    setExpenseAmountStr(f);
+                    setTimeout(()=>{ const el=expenseAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
+                  }}
+                  onBlur={()=>{
+                    const n = toNegativeNumber(expenseAmountStr);
+                    setExpenseAmountStr(
+                      new Intl.NumberFormat("en-US",{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
+                    );
+                  }}
+                />
+              </div>
+
+              {/* Tgl */}
+              <div>
+                <label className="block text-xs mb-1">Transaction Date</label>
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={expenseTxnFinal}
+                  onChange={(e)=>setExpenseTxnFinal(e.target.value)}
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs mb-1">Category</label>
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={expenseCategory}
+                  onChange={(e)=>setExpenseCategory(e.target.value)}
+                >
+                  {EXPENSE_CATEGORY_CODES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={expenseDesc}
+                  onChange={(e)=>setExpenseDesc(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button type="button" onClick={closeExpense} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
