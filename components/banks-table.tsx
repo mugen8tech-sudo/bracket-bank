@@ -982,18 +982,18 @@ export default function BanksTable() {
               <div>
                 <label className="block text-xs mb-1">Amount</label>
                 <input
-                  ref={adjAmountRef}
+                  ref={dpAmountRef}
                   className="border rounded px-3 py-2 w-full"
-                  value={adjAmountStr}
+                  value={dpAmountRef}
                   onFocus={(e)=>e.currentTarget.select()}
                   onChange={(e)=>{
                     const f = formatWithGroupingLiveSigned(e.target.value);
-                    setAdjAmountStr(f);
-                    setTimeout(()=>{ const el=adjAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
+                    dpAmountRef(f);
+                    setTimeout(()=>{ const el=dpAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
                   }}
                   onBlur={()=>{
-                    const n = toNumberSigned(adjAmountStr);
-                    setAdjAmountStr(
+                    const n = toNumberSigned(dpAmountStr);
+                    setDpAmountStr(
                       new Intl.NumberFormat("en-US",{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
                     );
                   }}
