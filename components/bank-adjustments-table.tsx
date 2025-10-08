@@ -101,7 +101,7 @@ export default function BankAdjustmentsTable(){
             <tr className="filters">
               <th className="w-24"></th>            {/* ID */}
               <th></th>                              {/* Bank */}
-              <th className="w-32"></th>             {/* Amount */}
+              <th className="w-34"></th>             {/* Amount */}
               <th className="w-[380px]">             {/* Description (lebar) */}
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
@@ -118,7 +118,7 @@ export default function BankAdjustmentsTable(){
             <tr>
               <th className="text-left w-24">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-32">Amount</th>
+              <th className="text-left w-34">Amount</th>
               <th className="text-left w-[380px]">Description</th>  {/* lebar */}
               <th className="text-left w-44">Tgl</th>               {/* sempit */}
               <th className="text-left w-32">By</th>
