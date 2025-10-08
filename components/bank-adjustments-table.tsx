@@ -95,33 +95,33 @@ export default function BankAdjustmentsTable(){
   return (
     <div className="space-y-3">
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
+        <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* Row FILTERS: taruh date-range di kolom Tgl */}
+            {/* FILTER ROW: date-range ditempatkan di kolom Tgl */}
             <tr className="filters">
-              <th className="w-16"></th>                    {/* ID */}
-              <th className="w-56"></th>                    {/* Bank */}
-              <th className="w-36"></th>                    {/* Amount */}
-              <th className="min-w-[520px]"></th>           {/* Description */}
-              <th className="w-56">
+              <th className="w-24"></th>             {/* ID */}
+              <th></th>                               {/* Bank */}
+              <th className="w-32"></th>              {/* Amount */}
+              <th></th>                               {/* Description */}
+              <th className="w-44">
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                   <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
-              </th>                                         {/* Tgl */}
-              <th className="w-40"></th>                    {/* By */}
-              <th className="w-28"></th>                    {/* Action */}
+              </th>                                   {/* Tgl */}
+              <th className="w-32"></th>              {/* By */}
+              <th className="w-28"></th>              {/* Action */}
             </tr>
 
-            {/* Row HEADER */}
+            {/* HEADER ROW */}
             <tr>
-              <th className="text-left w-16">ID</th>
-              <th className="text-left w-56">Bank</th>              {/* kecil */}
-              <th className="text-left w-36">Amount</th>            {/* kecil */}
-              <th className="text-left min-w-[520px]">Description</th> {/* lebar */}
-              <th className="text-left w-56">Tgl</th>
-              <th className="text-left w-40">By</th>
+              <th className="text-left w-24">ID</th>          {/* + sedikit lebar */}
+              <th className="text-left">Bank</th>             {/* sedikit lebih lebar dari sebelumnya (tanpa fixed width besar) */}
+              <th className="text-left w-32">Amount</th>      {/* dipersempit */}
+              <th className="text-left">Description</th>      {/* diperlebar via konten & wrap */}
+              <th className="text-left w-44">Tgl</th>         {/* disempitkan */}
+              <th className="text-left w-32">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
@@ -133,9 +133,9 @@ export default function BankAdjustmentsTable(){
             ) : rows.map(r => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td>{r.id}</td>
-                <td className="whitespace-normal break-words">{bankLabel(r.bank_id)}</td>
+                <td><div className="whitespace-normal break-words max-w-[220px]">{bankLabel(r.bank_id)}</div></td>
                 <td>{formatAmount(r.amount_delta)}</td>
-                <td className="whitespace-normal break-words">{r.description ?? ""}</td>
+                <td><div className="whitespace-normal break-words max-w-[520px]">{r.description ?? ""}</div></td>
                 <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
