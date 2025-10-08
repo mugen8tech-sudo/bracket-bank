@@ -98,7 +98,7 @@ export default function ExpensesTable() {
     if (fCat && fCat.trim()) q = q.eq("category_code", fCat.trim());
     // filter tanggal berdasarkan created_at (waktu submit)
     if (fStart) q = q.gte("created_at", startIsoJakarta(fStart));
-    if (fFinish) q = q.lte("created_at", endIsoJakarta(FFinish));
+    if (fFinish) q = q.lte("created_at", endIsoJakarta(fFinish));
 
     const { data, error, count } = await q;
     if (error) {
