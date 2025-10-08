@@ -16,7 +16,7 @@ type BA = {
 type BankLite = { id:number; bank_code:string; account_name:string; account_no:string };
 type ProfileLite = { user_id: string; full_name: string | null };
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 const startIsoJakarta = (d:string)=> new Date(`${d}T00:00:00+07:00`).toISOString();
 const endIsoJakarta   = (d:string)=> new Date(`${d}T23:59:59.999+07:00`).toISOString();
 
