@@ -36,7 +36,7 @@ export default function BankAdjustmentsTable(){
 
   const bankLabel = useMemo(()=>{
     const map: Record<number,string> = {};
-    for(const b of banks) map[b.id] = `[${b.bank_code}] ${b.account_name} - ${b.account_no}`;
+    for (const b of banks) map[b.id] = b.account_name; // hanya NAME
     return (id:number)=> map[id] ?? `#${id}`;
   }, [banks]);
 
@@ -112,11 +112,11 @@ export default function BankAdjustmentsTable(){
             </tr>
             <tr>
               <th className="text-left w-20">ID</th>
-              <th className="text-left">Bank</th>
-              <th className="text-left">Amount</th>
-              <th className="text-left">Description</th>
-              <th className="text-left">Tgl</th>
-              <th className="text-left">By</th>
+              <th className="text-left w-48">Bank</th>           {/* lebih kecil */}
+              <th className="text-left w-32">Amount</th>         {/* lebih kecil */}
+              <th className="text-left min-w-[520px]">Description</th> {/* lebih lebar */}
+              <th className="text-left w-52">Tgl</th>
+              <th className="text-left w-40">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
@@ -131,7 +131,7 @@ export default function BankAdjustmentsTable(){
                 <td className="whitespace-normal break-words">{bankLabel(r.bank_id)}</td>
                 <td>{formatAmount(r.amount_delta)}</td>
                 <td className="whitespace-normal break-words">{r.description ?? ""}</td>
-                <td>{new Date(r.txn_at_final).toLocaleString("id-ID",{ timeZone:"Asia/Jakarta" })}</td>
+                <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
               </tr>
