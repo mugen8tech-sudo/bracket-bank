@@ -173,9 +173,6 @@ export default function ExpensesTable() {
                   <datalist id="exp-cat-options">
                     {EXPENSE_CATEGORY_CODES.map(c => <option key={c} value={c} />)}
                   </datalist>
-                  <button type="button" onClick={()=>{ setFCat(""); load(1); }} className="rounded px-2 py-1 border bg-white text-xs">
-                    Reset
-                  </button>
                 </div>
               </th>
               <th className="min-w-[420px]"></th>         {/* Description (space lebar) */}
