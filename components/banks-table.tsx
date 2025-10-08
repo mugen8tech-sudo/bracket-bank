@@ -1003,6 +1003,7 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={dpTxnFinal}
                   onChange={(e) => setDpTxnFinal(e.target.value)}
