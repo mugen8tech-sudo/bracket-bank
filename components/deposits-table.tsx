@@ -314,13 +314,6 @@ export default function DepositsTable() {
                   <td>
                     {new Date(r.txn_at_final).toLocaleString("id-ID", {
                       timeZone: "Asia/Jakarta",
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                      hour12: false,
                     })}
                   </td>
                   <td>
@@ -444,15 +437,8 @@ export default function DepositsTable() {
                   <tr>
                     <td>Tgl Transaksi</td>
                     <td>
-                      {new Date(r.txn_at_final).toLocaleString("id-ID", {
+                      {new Date(delRow.txn_at_final).toLocaleString("id-ID", {
                         timeZone: "Asia/Jakarta",
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
                       })}
                     </td>
                   </tr>
