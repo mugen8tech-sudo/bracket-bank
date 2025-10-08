@@ -103,7 +103,7 @@ export default function BankAdjustmentsTable(){
               <th></th>                               {/* Bank */}
               <th className="w-32"></th>              {/* Amount */}
               <th></th>                               {/* Description */}
-              <th className="w-44">
+              <th className="w-[380px]">
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
@@ -119,8 +119,8 @@ export default function BankAdjustmentsTable(){
               <th className="text-left w-24">ID</th>          {/* + sedikit lebar */}
               <th className="text-left">Bank</th>             {/* sedikit lebih lebar dari sebelumnya (tanpa fixed width besar) */}
               <th className="text-left w-32">Amount</th>      {/* dipersempit */}
-              <th className="text-left">Description</th>      {/* diperlebar via konten & wrap */}
-              <th className="text-left w-44">Tgl</th>         {/* disempitkan */}
+              <th className="text-left w-44">Description</th>      {/* diperlebar via konten & wrap */}
+              <th className="text-left w-[380px]">Tgl</th>         {/* disempitkan */}
               <th className="text-left w-32">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
@@ -135,7 +135,7 @@ export default function BankAdjustmentsTable(){
                 <td>{r.id}</td>
                 <td><div className="whitespace-normal break-words max-w-[220px]">{bankLabel(r.bank_id)}</div></td>
                 <td>{formatAmount(r.amount_delta)}</td>
-                <td><div className="whitespace-normal break-words max-w-[520px]">{r.description ?? ""}</div></td>
+                <td><div className="whitespace-normal break-words max-w-[220px]">{r.description ?? ""}</div></td>
                 <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
