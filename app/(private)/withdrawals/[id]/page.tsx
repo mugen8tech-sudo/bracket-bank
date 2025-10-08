@@ -52,7 +52,8 @@ export default async function WithdrawalDetailPage({ params }: { params: { id: s
             <tr><td>Amount (Gross)</td><td>{formatAmount(wd.amount_gross)}</td></tr>
             <tr><td>Transfer Fee</td><td>{formatAmount(wd.transfer_fee_amount)}</td></tr>
             <tr><td>Net</td><td>{formatAmount(wd.amount_net)}</td></tr>
-            <tr><td>Transaction Time</td><td>{new Date(wd.txn_at_final).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</td></tr>
+            <tr><td>Transaction Time</td><td>{new Date(wd.txn_at_opened).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</td></tr>
+            <tr><td>Transaction Time (Selected)</td><td>{new Date(wd.txn_at_final).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</td></tr>
             <tr><td>Player</td><td>{wd.username_snapshot}</td></tr>
             <tr><td>Website</td><td>{tenant?.name ?? "-"}</td></tr>
             <tr><td>By</td><td>{createdByName ?? "-"}</td></tr>
