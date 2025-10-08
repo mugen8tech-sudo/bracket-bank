@@ -61,7 +61,7 @@ export default function ExpensesTable(){
 
     // filter tanggal berdasar created_at (submit time)
     if (fStart) q = q.gte("created_at", startIsoJak(fStart));
-    if (fFinish) q = q.lte("created_at", endIsoJak(FFinish));
+    if (fFinish) q = q.lte("created_at", endIsoJak(fFinish));
 
     const { data, error, count } = await q;
     if (error) { setLoading(false); alert(error.message); return; }
