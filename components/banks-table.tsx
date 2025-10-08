@@ -97,6 +97,24 @@ function toNumberSigned(input: string) {
   return isNeg ? -n : n;
 }
 
+// --- Robust parser khusus RPC (tahan spasi, NBSP, thin-space, dll.)
+function parseAmountForRPC(s: string) {
+  if (!s) return 0;
+  // Normalisasi spasi spesial (NBSP, thin space) → spasi biasa, lalu buang semua kecuali digit & titik
+  let c = s.replace(/[\u00A0\u2000-\u200A]/g, " ").trim();
+  c = c.replace(/[^\d.]/g, ""); // keep digits and dots only
+
+  // Simpan hanya titik pertama sebagai desimal, sisanya dibuang
+  const first = c.indexOf(".");
+  if (first !== -1) c = c.slice(0, first + 1) + c.slice(first + 1).replace(/\./g, "");
+
+  if (c === "" || c === ".") return 0;
+  if (c.endsWith(".")) c = c.slice(0, -1);
+
+  const n = Number(c);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // === Helpers untuk Biaya (selalu negatif) ===
 function formatWithGroupingLiveNegative(raw: string) {
   // pakai formatter existing -> tambahkan '-' bila ada nilai > 0
@@ -433,7 +451,7 @@ export default function BanksTable() {
       playerInputRef.current?.focus();
       return;
     }
-    const gross = toNumber(dpAmountStr);
+    const gross = parseAmountForRPC(dpAmountStr);
     if (!(gross > 0)) {
       alert("Amount harus lebih dari 0.");
       dpAmountRef.current?.focus();
