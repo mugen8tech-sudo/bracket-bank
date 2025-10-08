@@ -130,25 +130,32 @@ export default function InterbankTransfersTable() {
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* filters sederhana: start/finish + submit */}
+            {/* FILTERS — 1 sel per kolom (grid rapi) */}
             <tr className="filters">
-              <th colSpan={3}></th>
-              <th colSpan={2}>
-                <div className="flex items-center gap-2">
+              <th className="w-20"></th>                 {/* ID */}
+              <th className=""></th>                      {/* Bank Asal */}
+              <th className=""></th>                      {/* Bank Tujuan */}
+              <th className="w-32"></th>                  {/* Amount */}
+              <th className="w-52">                       {/* Tgl (atas-bawah) */}
+                <div className="flex flex-col gap-1">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
-                  <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
               </th>
-              <th colSpan={2}></th>
+              <th className="w-32"></th>                  {/* By */}
+              <th className="w-28">                       {/* Action */}
+                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
+              </th>
             </tr>
+
+            {/* HEADER */}
             <tr>
               <th className="text-left w-20">ID</th>
-              <th className="text-left">Bank Asal</th>
-              <th className="text-left">Bank Tujuan</th>
-              <th className="text-left">Amount</th>
-              <th className="text-left">Tgl</th>
-              <th className="text-left">By</th>
+              <th className="text-left min-w-[320px]">Bank Asal</th>
+              <th className="text-left min-w-[320px]">Bank Tujuan</th>
+              <th className="text-left w-32">Amount</th>
+              <th className="text-left w-52">Tgl</th>
+              <th className="text-left w-32">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
