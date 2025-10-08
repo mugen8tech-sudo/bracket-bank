@@ -137,7 +137,7 @@ export default function BankAdjustmentsTable(){
                 <td><div className="whitespace-normal break-words">{bankLabel(r.bank_id)}</div></td>
                 <td>{formatAmount(r.amount_delta)}</td>
                 <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
-                <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
+                <td>{new Date(r.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
               </tr>
