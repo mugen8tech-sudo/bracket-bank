@@ -97,31 +97,27 @@ export default function BankAdjustmentsTable(){
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* FILTER ROW — date-range di kolom Description */}
+            {/* FILTER ROW — posisikan date-range di tengah via colSpan */}
             <tr className="filters">
-              <th className="w-24"></th>            {/* ID */}
-              <th></th>                              {/* Bank */}
-              <th className="w-36"></th>             {/* Amount */}
-              <th className="w-[400px]">             {/* Description (lebar) */}
+              <th colSpan={3}></th> {/* ID + Bank + Amount */}
+              <th colSpan={2}>
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                   <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
               </th>
-              <th className="w-40"></th>             {/* Tgl (lebih sempit) */}
-              <th className="w-30"></th>             {/* By */}
-              <th className="w-28"></th>             {/* Action */}
+              <th colSpan={2}></th> {/* By + Action */}
             </tr>
 
-            {/* HEADER ROW */}
+            {/* HEADER ROW — lebar mengikuti interbank */}
             <tr>
-              <th className="text-left w-24">ID</th>
+              <th className="text-left w-20">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-36">Amount</th>
-              <th className="text-left w-[400px]">Description</th>  {/* lebar */}
-              <th className="text-left w-40">Tgl</th>               {/* sempit */}
-              <th className="text-left w-30">By</th>
+              <th className="text-left">Amount</th>
+              <th className="text-left">Description</th>
+              <th className="text-left">Tgl</th>
+              <th className="text-left">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
@@ -133,9 +129,9 @@ export default function BankAdjustmentsTable(){
             ) : rows.map(r => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td>{r.id}</td>
-                <td><div className="whitespace-normal break-words max-w-[220px]">{bankLabel(r.bank_id)}</div></td>
+                <td><div className="whitespace-normal break-words">{bankLabel(r.bank_id)}</div></td>
                 <td>{formatAmount(r.amount_delta)}</td>
-                <td><div className="whitespace-normal break-words max-w-[380px]">{r.description ?? ""}</div></td>
+                <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
                 <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
