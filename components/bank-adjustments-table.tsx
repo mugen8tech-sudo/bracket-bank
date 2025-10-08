@@ -97,30 +97,30 @@ export default function BankAdjustmentsTable(){
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* FILTER ROW: date-range ditempatkan di kolom Tgl */}
+            {/* FILTER ROW — date-range di kolom Description */}
             <tr className="filters">
-              <th className="w-24"></th>             {/* ID */}
-              <th></th>                               {/* Bank */}
-              <th className="w-32"></th>              {/* Amount */}
-              <th></th>                               {/* Description */}
-              <th className="w-[380px]">
+              <th className="w-24"></th>            {/* ID */}
+              <th></th>                              {/* Bank */}
+              <th className="w-32"></th>             {/* Amount */}
+              <th className="w-[380px]">             {/* Description (lebar) */}
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                   <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
-              </th>                                   {/* Tgl */}
-              <th className="w-32"></th>              {/* By */}
-              <th className="w-28"></th>              {/* Action */}
+              </th>
+              <th className="w-44"></th>             {/* Tgl (lebih sempit) */}
+              <th className="w-32"></th>             {/* By */}
+              <th className="w-28"></th>             {/* Action */}
             </tr>
 
             {/* HEADER ROW */}
             <tr>
-              <th className="text-left w-24">ID</th>          {/* + sedikit lebar */}
-              <th className="text-left">Bank</th>             {/* sedikit lebih lebar dari sebelumnya (tanpa fixed width besar) */}
-              <th className="text-left w-32">Amount</th>      {/* dipersempit */}
-              <th className="text-left w-44">Description</th>      {/* diperlebar via konten & wrap */}
-              <th className="text-left w-[380px]">Tgl</th>         {/* disempitkan */}
+              <th className="text-left w-24">ID</th>
+              <th className="text-left">Bank</th>
+              <th className="text-left w-32">Amount</th>
+              <th className="text-left w-[380px]">Description</th>  {/* lebar */}
+              <th className="text-left w-44">Tgl</th>               {/* sempit */}
               <th className="text-left w-32">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
@@ -135,7 +135,7 @@ export default function BankAdjustmentsTable(){
                 <td>{r.id}</td>
                 <td><div className="whitespace-normal break-words max-w-[220px]">{bankLabel(r.bank_id)}</div></td>
                 <td>{formatAmount(r.amount_delta)}</td>
-                <td><div className="whitespace-normal break-words max-w-[220px]">{r.description ?? ""}</div></td>
+                <td><div className="whitespace-normal break-words max-w-[380px]">{r.description ?? ""}</div></td>
                 <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                 <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
