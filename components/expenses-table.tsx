@@ -161,7 +161,7 @@ export default function ExpensesTable() {
               <th className="w-20"></th>                  {/* ID */}
               <th></th>                                   {/* Bank */}
               <th className="w-36"></th>                  {/* Amount */}
-              <th className="w-44">                       {/* Category (datalist search) */}
+              <th className="w-54">                       {/* Category (datalist search) */}
                 <div className="flex items-center gap-2">
                   <input
                     list="exp-cat-options"
@@ -176,7 +176,7 @@ export default function ExpensesTable() {
                 </div>
               </th>
               <th className="min-w-[420px]"></th>         {/* Description (space lebar) */}
-              <th className="w-52">                       {/* Tgl (atas-bawah) */}
+              <th className="w-42">                       {/* Tgl (atas-bawah) */}
                 <div className="flex flex-col gap-1">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
@@ -193,9 +193,9 @@ export default function ExpensesTable() {
               <th className="text-left w-20">ID</th>
               <th className="text-left min-w-[280px]">Bank</th>
               <th className="text-center w-36">Amount</th>
-              <th className="text-center w-44">Category</th>
+              <th className="text-center w-54">Category</th>
               <th className="text-center min-w-[420px]">Description</th>
-              <th className="text-center w-52">Tgl</th>
+              <th className="text-center w-42">Tgl</th>
               <th className="text-center w-28">By</th>
               <th className="text-center w-28">Action</th>
             </tr>
