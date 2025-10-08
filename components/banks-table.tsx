@@ -6,6 +6,7 @@ import { formatAmount } from "@/lib/format";
 
 type BankRow = {
   id: number;
+  
   tenant_id: string;
   bank_code: string;
   account_name: string;
@@ -447,7 +448,7 @@ export default function BanksTable() {
       p_amount_gross: gross,
       p_txn_at_opened: dpOpenedISO,
       p_txn_at_final: txnFinalISO,
-      p_promo_code: null,
+      p_promo_code: dpPromo || null,
       p_description: dpDesc || null,
     });
     if (error) {
