@@ -28,7 +28,7 @@ function startDayJakISO(d: string) { return new Date(`${d}T00:00:00+07:00`).toIS
 function endDayJakISO(d: string)   { return new Date(`${d}T23:59:59.999+07:00`).toISOString(); }
 function nowLocalDatetimeValue() {
   const d = new Date(); const pad=(n:number)=>`${n}`.padStart(2,"0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 /* live thousand separators */
@@ -296,7 +296,7 @@ export default function PendingDepositsTable() {
               </div>
               <div>
                 <label className="block text-xs mb-1">Transaction Date</label>
-                <input type="datetime-local" className="border rounded px-3 py-2 w-full" value={assignTxn} onChange={(e)=>setAssignTxn(e.target.value)} />
+                <input type="datetime-local" step="1" className="border rounded px-3 py-2 w-full" value={assignTxn} onChange={(e)=>setAssignTxn(e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs mb-1">Player</label>
