@@ -26,7 +26,7 @@ type BankLite = {
 
 type ProfileLite = { user_id: string; full_name: string | null };
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 
 /** ====== Kode kategori (bisa kamu tambah kapan saja) ====== */
 const EXPENSE_CATEGORY_CODES = [
