@@ -59,7 +59,8 @@ export default async function DepositDetailPage({ params }: { params: { id: stri
             <tr><td>Amount (Gross)</td><td>{formatAmount(dep.amount_gross)}</td></tr>
             <tr><td>Direct Fee</td><td>{formatAmount(dep.fee_direct_amount)}</td></tr>
             <tr><td>Net</td><td>{formatAmount(dep.amount_net)}</td></tr>
-            <tr><td>Transaction Time</td><td>{new Date(dep.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td></tr>
+            <tr><td>Transaction Time</td><td>{new Date(dep.txn_at_opened).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td></tr>
+            <tr><td>Transaction Time (Selected)</td><td>{new Date(dep.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td></tr>
             <tr><td>Player</td><td>{dep.username_snapshot}</td></tr>
             <tr><td>Website</td><td>{tenant?.name ?? "-"}</td></tr>
             <tr><td>By</td><td>{createdByName ?? "-"}</td></tr>
