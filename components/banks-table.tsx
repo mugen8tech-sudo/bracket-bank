@@ -66,17 +66,25 @@ function nowLocalDatetimeValue() {
   )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// === Helpers (signed) untuk Adjustment ===
+// Normalisasi semua variasi tanda minus ke '-' (ASCII)
+function normalizeMinus(raw: string) {
+  return raw.replace(/\u2212|\u2013|\u2014/g, "-"); // minus(−), en/em–dash → '-'
+}
+// Menerima minus di depan ATAU di belakang (contoh "100000-")
 function formatWithGroupingLiveSigned(raw: string) {
-  const trimmed = raw.trim();
-  const isNeg = trimmed.startsWith("-") || trimmed.endsWith("-");
-  const noMinus = trimmed.replace(/-/g, "");         // buang semua '-'
-  const grouped = formatWithGroupingLive(noMinus);   // pakai helper existing
+  let s = normalizeMinus(raw.trim());
+  const isNeg = s.startsWith("-") || s.endsWith("-");
+  s = s.replace(/-/g, "");                    // buang semua '-' sebelum grouping
+  const grouped = formatWithGroupingLive(s);  // helper existing
   return (isNeg ? "-" : "") + grouped;
 }
 function toNumberSigned(input: string) {
-  const neg = /^\s*-/.test(input) || /-\s*$/.test(input);
-  const n = toNumber(input);                         // helper existing
-  return neg ? -n : n;
+  let s = normalizeMinus(input.trim());
+  const isNeg = s.startsWith("-") || s.endsWith("-");
+  s = s.replace(/-/g, "");                    // parsing sebagai absolut
+  const n = toNumber(s);                      // helper existing
+  return isNeg ? -n : n;
 }
 
 export default function BanksTable() {
@@ -896,28 +904,19 @@ export default function BanksTable() {
               <div>
                 <label className="block text-xs mb-1">Amount</label>
                 <input
-                  ref={dpAmountRef}
+                  ref={adjAmountRef}
                   className="border rounded px-3 py-2 w-full"
-                  value={dpAmountStr}
-                  onFocus={(e) => e.currentTarget.select()}
-                  onChange={(e) => {
-                    const f = formatWithGroupingLive(e.target.value);
-                    setDpAmountStr(f);
-                    setTimeout(() => {
-                      const el = dpAmountRef.current;
-                      if (el) {
-                        const L = el.value.length;
-                        el.setSelectionRange(L, L);
-                      }
-                    }, 0);
+                  value={adjAmountStr}
+                  onFocus={(e)=>e.currentTarget.select()}
+                  onChange={(e)=>{
+                    const f = formatWithGroupingLiveSigned(e.target.value);
+                    setAdjAmountStr(f);
+                    setTimeout(()=>{ const el=adjAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
                   }}
-                  onBlur={() => {
-                    const n = toNumber(dpAmountStr);
-                    setDpAmountStr(
-                      new Intl.NumberFormat("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      }).format(n)
+                  onBlur={()=>{
+                    const n = toNumberSigned(adjAmountStr);
+                    setAdjAmountStr(
+                      new Intl.NumberFormat("en-US",{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
                     );
                   }}
                 />
