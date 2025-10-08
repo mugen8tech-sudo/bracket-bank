@@ -65,16 +65,17 @@ function nowLocalDatetimeValue() {
     d.getDate()
   )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
 function formatWithGroupingLiveSigned(raw: string) {
   const trimmed = raw.trim();
-  const isNeg = trimmed.startsWith("-");
-  const unsigned = trimmed.replace(/^-/, "");
-  const grouped = formatWithGroupingLive(unsigned);
+  const isNeg = trimmed.startsWith("-") || trimmed.endsWith("-");
+  const noMinus = trimmed.replace(/-/g, "");         // buang semua '-'
+  const grouped = formatWithGroupingLive(noMinus);   // pakai helper existing
   return (isNeg ? "-" : "") + grouped;
 }
 function toNumberSigned(input: string) {
-  const neg = /^\s*-/.test(input);
-  const n = toNumber(input);
+  const neg = /^\s*-/.test(input) || /-\s*$/.test(input);
+  const n = toNumber(input);                         // helper existing
   return neg ? -n : n;
 }
 
@@ -497,12 +498,9 @@ export default function BanksTable() {
   /* ========== Submit ADJ ========== */
   const submitAdj = async () => {
     if (!adjBank) return;
-    const delta = toNumberSigned(adjAmountStr);
-    if (delta === 0) {
-      alert("Amount tidak boleh 0.");
-      adjAmountRef.current?.focus();
-      return;
-    }
+    const delta = toNumberSigned(adjAmountStr); // <— PENTING: signed
+    if (delta === 0) { alert("Amount tidak boleh 0."); adjAmountRef.current?.focus(); return; }
+
     const { error } = await supabase.rpc("perform_bank_adjustment", {
       p_bank_id: adjBank.id,
       p_amount_delta: delta, // boleh negatif/positif
@@ -510,6 +508,7 @@ export default function BanksTable() {
       p_txn_at_final: new Date(adjTxnFinal).toISOString(),
       p_description: adjDesc || null,
     });
+
     if (error) { alert(error.message); return; }
     closeAdj();
     await load();
@@ -1426,7 +1425,7 @@ export default function BanksTable() {
                   onBlur={()=>{
                     const n = toNumberSigned(adjAmountStr);
                     setAdjAmountStr(
-                      new Intl.NumberFormat("en-US",{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
+                      new Intl.NumberFormat("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
                     );
                   }}
                 />
