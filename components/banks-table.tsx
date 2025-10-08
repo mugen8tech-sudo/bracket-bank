@@ -448,7 +448,7 @@ export default function BanksTable() {
       p_amount_gross: gross,
       p_txn_at_opened: dpOpenedISO,
       p_txn_at_final: txnFinalISO,
-      p_promo_code: dpPromo || null,
+      p_promo_code: null,
       p_description: dpDesc || null,
     });
     if (error) {
