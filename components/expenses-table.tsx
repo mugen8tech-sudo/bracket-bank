@@ -73,6 +73,7 @@ export default function ExpensesTable(){
       .order("created_at", { ascending: false })
       .range(from, to);
 
+    const [fCat, setFCat] = useState<string>("ALL");
     if (fCat && fCat !== "ALL") q = q.eq("category_code", fCat);
 
     // filter tanggal berdasar created_at (submit time)
@@ -81,8 +82,6 @@ export default function ExpensesTable(){
 
     const { data, error, count } = await q;
     if (error) { setLoading(false); alert(error.message); return; }
-
-    const [fCat, setFCat] = useState<string>("ALL");
 
     // who map
     const ids = Array.from(new Set(((data ?? []) as EXP[]).map(r=>r.created_by).filter(Boolean) as string[]));
