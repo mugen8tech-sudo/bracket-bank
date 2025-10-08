@@ -97,27 +97,32 @@ export default function BankAdjustmentsTable(){
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* FILTER ROW — posisikan date-range di tengah via colSpan */}
+            {/* FILTERS */}
             <tr className="filters">
-              <th colSpan={3}></th> {/* ID + Bank + Amount */}
-              <th colSpan={2}>
-                <div className="flex items-center gap-2">
+              <th className="w-20"></th>                 {/* ID */}
+              <th></th>                                   {/* Bank (name only) */}
+              <th className="w-36"></th>                  {/* Amount */}
+              <th className="min-w-[420px]"></th>         {/* Description (space lebar) */}
+              <th className="w-52">                       {/* Tgl (atas-bawah) */}
+                <div className="flex flex-col gap-1">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
-                  <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
               </th>
-              <th colSpan={2}></th> {/* By + Action */}
+              <th className="w-28"></th>                  {/* By */}
+              <th className="w-28">                       {/* Action */}
+                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
+              </th>
             </tr>
 
-            {/* HEADER ROW — lebar mengikuti interbank */}
+            {/* HEADER */}
             <tr>
               <th className="text-left w-20">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left">Amount</th>
-              <th className="text-left">Description</th>
-              <th className="text-left">Tgl</th>
-              <th className="text-left">By</th>
+              <th className="text-left w-36">Amount</th>
+              <th className="text-left min-w-[420px]">Description</th>
+              <th className="text-left w-52">Tgl</th>
+              <th className="text-left w-28">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
@@ -141,7 +146,7 @@ export default function BankAdjustmentsTable(){
         </table>
       </div>
 
-      {/* pagination 100 */}
+      {/* pagination 25 */}
       <div className="flex justify-center">
         <nav className="inline-flex items-center gap-1 text-sm select-none">
           <button onClick={goFirst} disabled={!canPrev} className="px-3 py-1 rounded border bg-white disabled:opacity-50">First</button>
