@@ -65,6 +65,18 @@ function nowLocalDatetimeValue() {
     d.getDate()
   )}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function formatWithGroupingLiveSigned(raw: string) {
+  const trimmed = raw.trim();
+  const isNeg = trimmed.startsWith("-");
+  const unsigned = trimmed.replace(/^-/, "");
+  const grouped = formatWithGroupingLive(unsigned);
+  return (isNeg ? "-" : "") + grouped;
+}
+function toNumberSigned(input: string) {
+  const neg = /^\s*-/.test(input);
+  const n = toNumber(input);
+  return neg ? -n : n;
+}
 
 export default function BanksTable() {
   const supabase = supabaseBrowser();
@@ -122,6 +134,14 @@ export default function BanksTable() {
   const [ttToAt, setTtToAt] = useState<string>(nowLocalDatetimeValue());
   const [ttDesc, setTtDesc] = useState<string>("");
 
+  // ====== ADJ modal ======
+  const [showAdj, setShowAdj] = useState(false);
+  const [adjBank, setAdjBank] = useState<BankRow | null>(null);
+  const [adjAmountStr, setAdjAmountStr] = useState<string>("0.00");
+  const [adjOpenedISO, setAdjOpenedISO] = useState<string>("");
+  const [adjTxnFinal, setAdjTxnFinal] = useState<string>(nowLocalDatetimeValue());
+  const [adjDesc, setAdjDesc] = useState<string>("");
+
   // player search states (dipakai DP & WD)
   const [leadQuery, setLeadQuery] = useState<string>("");
   const [leadOptions, setLeadOptions] = useState<LeadLite[]>([]);
@@ -135,6 +155,7 @@ export default function BanksTable() {
   const pdpAmountRef = useRef<HTMLInputElement | null>(null);
   const ttAmountRef = useRef<HTMLInputElement | null>(null);
   const ttFeeRef = useRef<HTMLInputElement | null>(null);
+  const adjAmountRef = useRef<HTMLInputElement | null>(null);
 
   const closeNew = useCallback(() => setShowNew(false), []);
   const openNew  = useCallback(() => setShowNew(true), []);
@@ -190,6 +211,17 @@ export default function BanksTable() {
     setTtDesc("");
   };
 
+  const closeAdj = useCallback(() => setShowAdj(false), []);
+  const openAdjFor = (b: BankRow) => {
+    setAdjBank(b);
+    setShowAdj(true);
+    setAdjAmountStr("0.00");
+    setAdjOpenedISO(new Date().toISOString());
+    setAdjTxnFinal(nowLocalDatetimeValue());
+    setAdjDesc("");
+    setTimeout(()=>adjAmountRef.current?.select(), 0);
+  };
+
   // ESC close (DP/WD/PDP/TT/Setting)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -199,12 +231,13 @@ export default function BanksTable() {
         if (showWD) closeWD();
         if (showPDP) closePDP();
         if (showTT) closeTT();
+        if (showAdj) closeAdj();
         if (showSetting) setShowSetting(false);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showNew, showDP, showWD, showPDP, showTT, showSetting, closeNew, closeDP, closeWD, closePDP, closeTT]);
+  }, [showNew, showDP, showWD, showPDP, showTT, showAdj, showSetting, closeNew, closeDP, closeWD, closePDP, closeTT, closeAdj]);
 
   // Listener event (kompatibel dengan tombol existing yang dispatch "open-bank-new")
   useEffect(() => {
@@ -461,6 +494,27 @@ export default function BanksTable() {
     await load();
   };
 
+  /* ========== Submit ADJ ========== */
+  const submitAdj = async () => {
+    if (!adjBank) return;
+    const delta = toNumberSigned(adjAmountStr);
+    if (delta === 0) {
+      alert("Amount tidak boleh 0.");
+      adjAmountRef.current?.focus();
+      return;
+    }
+    const { error } = await supabase.rpc("perform_bank_adjustment", {
+      p_bank_id: adjBank.id,
+      p_amount_delta: delta, // boleh negatif/positif
+      p_txn_at_opened: adjOpenedISO,
+      p_txn_at_final: new Date(adjTxnFinal).toISOString(),
+      p_description: adjDesc || null,
+    });
+    if (error) { alert(error.message); return; }
+    closeAdj();
+    await load();
+  };
+
   const saveSetting = async () => {
     const {
       data: { user },
@@ -610,7 +664,13 @@ export default function BanksTable() {
                         >
                           TT
                         </button>
-                        <DisabledBtn label="Adj" title="Adjustment (coming soon)" />
+                        <button
+                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                          title="Bank Adjustment"
+                          onClick={() => openAdjFor(r)}
+                        >
+                          Adj
+                        </button>
                         <DisabledBtn label="Biaya" title="Biaya (coming soon)" />
                       </div>
                     </td>
@@ -1328,6 +1388,77 @@ export default function BanksTable() {
               >
                 Submit
               </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ===== Modal ADJ ===== */}
+      {showAdj && adjBank && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
+          onMouseDown={(e)=>{ if(e.currentTarget===e.target) closeAdj(); }}
+        >
+          <form
+            onSubmit={(e)=>{ e.preventDefault(); submitAdj(); }}
+            className="bg-white rounded border w-full max-w-2xl mt-10"
+          >
+            <div className="p-4 border-b">
+              <div className="font-semibold">
+                Adjustment di [{adjBank.bank_code}] {adjBank.account_name} - {adjBank.account_no}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {/* Amount (+/-) */}
+              <div>
+                <label className="block text-xs mb-1">Amount</label>
+                <input
+                  ref={adjAmountRef}
+                  className="border rounded px-3 py-2 w-full"
+                  value={adjAmountStr}
+                  onFocus={(e)=>e.currentTarget.select()}
+                  onChange={(e)=>{
+                    const f = formatWithGroupingLiveSigned(e.target.value);
+                    setAdjAmountStr(f);
+                    setTimeout(()=>{ const el=adjAmountRef.current; if(el){ const L=el.value.length; el.setSelectionRange(L,L);} },0);
+                  }}
+                  onBlur={()=>{
+                    const n = toNumberSigned(adjAmountStr);
+                    setAdjAmountStr(
+                      new Intl.NumberFormat("en-US",{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n)
+                    );
+                  }}
+                />
+                <div className="text-xs text-gray-500 mt-1">Boleh diisi negatif (−) untuk mengurangi saldo, positif untuk menambah.</div>
+              </div>
+
+              {/* Tgl */}
+              <div>
+                <label className="block text-xs mb-1">Transaction Date</label>
+                <input
+                  type="datetime-local"
+                  className="border rounded px-3 py-2 w-full"
+                  value={adjTxnFinal}
+                  onChange={(e)=>setAdjTxnFinal(e.target.value)}
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  className="border rounded px-3 py-2 w-full"
+                  value={adjDesc}
+                  onChange={(e)=>setAdjDesc(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="border-t p-4 flex justify-end gap-2">
+              <button type="button" onClick={closeAdj} className="rounded px-4 py-2 bg-gray-100">Close</button>
+              <button type="submit" className="rounded px-4 py-2 bg-blue-600 text-white">Submit</button>
             </div>
           </form>
         </div>
