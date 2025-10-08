@@ -135,14 +135,14 @@ export default function InterbankTransfersTable() {
               <th className="w-20"></th>                 {/* ID */}
               <th className=""></th>                      {/* Bank Asal */}
               <th className=""></th>                      {/* Bank Tujuan */}
-              <th className="w-32"></th>                  {/* Amount */}
+              <th className="w-36"></th>                  {/* Amount */}
               <th className="w-52">                       {/* Tgl (atas-bawah) */}
                 <div className="flex flex-col gap-1">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                 </div>
               </th>
-              <th className="w-32"></th>                  {/* By */}
+              <th className="w-28"></th>                  {/* By */}
               <th className="w-28">                       {/* Action */}
                 <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
               </th>
@@ -153,9 +153,9 @@ export default function InterbankTransfersTable() {
               <th className="text-left w-20">ID</th>
               <th className="text-left min-w-[320px]">Bank Asal</th>
               <th className="text-left min-w-[320px]">Bank Tujuan</th>
-              <th className="text-left w-32">Amount</th>
+              <th className="text-left w-36">Amount</th>
               <th className="text-left w-52">Tgl</th>
-              <th className="text-left w-32">By</th>
+              <th className="text-left w-28">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
