@@ -156,76 +156,51 @@ export default function ExpensesTable() {
           style={{ borderCollapse: "collapse" }}
         >
           <thead>
-            {/* ==== FILTER ROW (layout mengikuti interbank) ==== */}
+            {/* FILTERS */}
             <tr className="filters">
-              <th colSpan={3}></th> {/* ID + Bank + Amount */}
-
-              {/* Category filter (dropdown search via <datalist>) */}
-              <th>
+              <th className="w-20"></th>                  {/* ID */}
+              <th></th>                                   {/* Bank */}
+              <th className="w-36"></th>                  {/* Amount */}
+              <th className="w-44">                       {/* Category (datalist search) */}
                 <div className="flex items-center gap-2">
                   <input
                     list="exp-cat-options"
                     value={fCat}
-                    onChange={(e) => setFCat(e.target.value)}
+                    onChange={(e)=>setFCat(e.target.value)}
                     className="border rounded px-2 py-1 w-full"
-                    placeholder="Category (ketik untuk cari)"
+                    placeholder="Category"
                   />
                   <datalist id="exp-cat-options">
-                    {EXPENSE_CATEGORY_CODES.map((c) => (
-                      <option key={c} value={c} />
-                    ))}
+                    {EXPENSE_CATEGORY_CODES.map(c => <option key={c} value={c} />)}
                   </datalist>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFCat("");
-                      load(1);
-                    }}
-                    className="rounded px-2 py-1 border bg-white text-xs"
-                    title="Reset category"
-                  >
+                  <button type="button" onClick={()=>{ setFCat(""); load(1); }} className="rounded px-2 py-1 border bg-white text-xs">
                     Reset
                   </button>
                 </div>
               </th>
-
-              {/* Date range */}
-              <th colSpan={2}>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={fStart}
-                    onChange={(e) => setFStart(e.target.value)}
-                    className="border rounded px-2 py-1"
-                  />
-                  <input
-                    type="date"
-                    value={fFinish}
-                    onChange={(e) => setFFinish(e.target.value)}
-                    className="border rounded px-2 py-1"
-                  />
-                  <button
-                    onClick={apply}
-                    className="rounded bg-blue-600 text-white px-3 py-1"
-                  >
-                    Submit
-                  </button>
+              <th className="min-w-[420px]"></th>         {/* Description (space lebar) */}
+              <th className="w-52">                       {/* Tgl (atas-bawah) */}
+                <div className="flex flex-col gap-1">
+                  <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
+                  <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                 </div>
               </th>
-
-              <th colSpan={2}></th> {/* By + Action */}
+              <th className="w-28"></th>                  {/* By */}
+              <th className="w-28">                       {/* Action */}
+                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
+              </th>
             </tr>
 
-            {/* ==== HEADER ROW (meniru interbank) ==== */}
+            {/* HEADER */}
             <tr>
               <th className="text-left w-20">ID</th>
-              <th className="text-left">Bank</th>
-              <th className="text-left">Amount</th>
-              <th className="text-left w-40">Category</th>
-              <th className="text-left">Description</th>
-              <th className="text-left">Tgl</th>
-              <th className="text-left">By</th>
-              <th className="text-left w-28">Action</th>
+              <th className="text-left min-w-[280px]">Bank</th>
+              <th className="text-center w-36">Amount</th>
+              <th className="text-center w-44">Category</th>
+              <th className="text-center min-w-[420px]">Description</th>
+              <th className="text-center w-52">Tgl</th>
+              <th className="text-center w-28">By</th>
+              <th className="text-center w-28">Action</th>
             </tr>
           </thead>
 
@@ -277,7 +252,7 @@ export default function ExpensesTable() {
         </table>
       </div>
 
-      {/* ==== Pagination (100/halaman) ==== */}
+      {/* ==== Pagination (25/halaman) ==== */}
       <div className="flex justify-center">
         <nav className="inline-flex items-center gap-1 text-sm select-none">
           <button
