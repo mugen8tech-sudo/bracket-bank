@@ -9,7 +9,7 @@ type EXP = {
   category_code:string|null; description:string|null;
   txn_at_final:string; created_at:string; created_by:string|null;
 };
-type BankLite = { account_name:string };
+type BankLite = { bank_code:string; account_name:string; account_no:string };
 type ProfileLite = { user_id:string; full_name:string|null };
 
 export default function Page({ params }: { params: { id: string } }) {
@@ -22,8 +22,11 @@ export default function Page({ params }: { params: { id: string } }) {
     const { data, error } = await supabase.from("bank_expenses").select("*").eq("id", Number(params.id)).single();
     if (error) { alert(error.message); return; }
     const r = data as EXP;
-    const { data: b } = await supabase.from("banks").select("account_name").eq("id", r.bank_id).single();
-    if (b) setBankName((b as BankLite).account_name);
+    const { data: b } = await supabase.from("banks").select("bank_code, account_name, account_no").eq("id", r.bank_id).single();
+    if (b) {
+      const bb = b as BankLite;
+      setBankName(`[${bb.bank_code}] ${bb.account_name} - ${bb.account_no}`);
+    }
     if (r.created_by) {
       const { data: p } = await supabase.from("profiles").select("user_id, full_name").eq("user_id", r.created_by).maybeSingle();
       if (p) setByName(((p as ProfileLite).full_name) ?? r.created_by.slice(0,8));
