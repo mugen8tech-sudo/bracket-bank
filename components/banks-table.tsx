@@ -1430,7 +1430,6 @@ export default function BanksTable() {
                     );
                   }}
                 />
-                <div className="text-xs text-gray-500 mt-1">Boleh diisi negatif (−) untuk mengurangi saldo, positif untuk menambah.</div>
               </div>
 
               {/* Tgl */}
