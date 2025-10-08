@@ -91,14 +91,14 @@ export default function ExpensesTable() {
     let q = supabase
       .from("bank_expenses")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
+      .order("txn_at_final", { ascending: false })
       .range(from, to);
 
     // filter category (exact)
     if (fCat && fCat.trim()) q = q.eq("category_code", fCat.trim());
-    // filter tanggal berdasarkan created_at (waktu submit)
-    if (fStart) q = q.gte("created_at", startIsoJakarta(fStart));
-    if (fFinish) q = q.lte("created_at", endIsoJakarta(fFinish));
+    // filter tanggal berdasarkan txn_at_final (waktu submit)
+    if (fStart) q = q.gte("txn_at_final", startIsoJakarta(fStart));
+    if (fFinish) q = q.lte("txn_at_final", endIsoJakarta(fFinish));
 
     const { data, error, count } = await q;
     if (error) {
@@ -225,7 +225,7 @@ export default function ExpensesTable() {
                     </div>
                   </td>
                   <td>
-                    {new Date(r.created_at).toLocaleString("id-ID", {
+                    {new Date(r.txn_at_final).toLocaleString("id-ID", {
                       timeZone: "Asia/Jakarta",
                     })}
                   </td>
