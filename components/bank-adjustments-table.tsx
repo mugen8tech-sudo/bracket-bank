@@ -119,8 +119,8 @@ export default function BankAdjustmentsTable(){
             <tr>
               <th className="text-left w-20">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-36">Amount</th>
-              <th className="text-left min-w-[420px]">Description</th>
+              <th className="text-center w-36">Amount</th>
+              <th className="text-center min-w-[420px]">Description</th>
               <th className="text-left w-52">Tgl</th>
               <th className="text-left w-28">By</th>
               <th className="text-left w-28">Action</th>
