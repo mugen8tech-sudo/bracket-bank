@@ -1189,6 +1189,7 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={wdTxnFinal}
                   onChange={(e) => setWdTxnFinal(e.target.value)}
@@ -1282,6 +1283,7 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={pdpTxnFinal}
                   onChange={(e) => setPdpTxnFinal(e.target.value)}
@@ -1405,6 +1407,7 @@ export default function BanksTable() {
                 </label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={ttFromAt}
                   onChange={(e) => setTtFromAt(e.target.value)}
@@ -1433,6 +1436,7 @@ export default function BanksTable() {
                 </label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={ttToAt}
                   onChange={(e) => setTtToAt(e.target.value)}
@@ -1513,6 +1517,7 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={adjTxnFinal}
                   onChange={(e)=>setAdjTxnFinal(e.target.value)}
@@ -1583,6 +1588,7 @@ export default function BanksTable() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
+                  step="1"
                   className="border rounded px-3 py-2 w-full"
                   value={expenseTxnFinal}
                   onChange={(e)=>setExpenseTxnFinal(e.target.value)}
