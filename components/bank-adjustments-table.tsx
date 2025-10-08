@@ -101,16 +101,16 @@ export default function BankAdjustmentsTable(){
             <tr className="filters">
               <th className="w-24"></th>            {/* ID */}
               <th></th>                              {/* Bank */}
-              <th className="w-34"></th>             {/* Amount */}
-              <th className="w-[380px]">             {/* Description (lebar) */}
+              <th className="w-36"></th>             {/* Amount */}
+              <th className="w-[400px]">             {/* Description (lebar) */}
                 <div className="flex items-center gap-2">
                   <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
                   <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                   <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
                 </div>
               </th>
-              <th className="w-44"></th>             {/* Tgl (lebih sempit) */}
-              <th className="w-32"></th>             {/* By */}
+              <th className="w-40"></th>             {/* Tgl (lebih sempit) */}
+              <th className="w-30"></th>             {/* By */}
               <th className="w-28"></th>             {/* Action */}
             </tr>
 
@@ -118,10 +118,10 @@ export default function BankAdjustmentsTable(){
             <tr>
               <th className="text-left w-24">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-34">Amount</th>
-              <th className="text-left w-[380px]">Description</th>  {/* lebar */}
-              <th className="text-left w-44">Tgl</th>               {/* sempit */}
-              <th className="text-left w-32">By</th>
+              <th className="text-left w-36">Amount</th>
+              <th className="text-left w-[4000px]">Description</th>  {/* lebar */}
+              <th className="text-left w-40">Tgl</th>               {/* sempit */}
+              <th className="text-left w-30">By</th>
               <th className="text-left w-28">Action</th>
             </tr>
           </thead>
