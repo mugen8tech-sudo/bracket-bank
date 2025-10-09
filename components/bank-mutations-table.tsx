@@ -690,11 +690,6 @@ export default function BankMutationsTable() {
 
         {/* === Kontrol Paginasi (25 baris) === */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-2 p-2 border-t text-sm">
-          <div className="opacity-70">
-            Menampilkan{" "}
-            {rows.length === 0 ? 0 : start + 1}–{Math.min(end, rows.length)} dari {rows.length} entri
-            {" "}(<span>25 baris/halaman</span>)
-          </div>
           <div className="flex items-center gap-1">
             <button
               className="px-2 py-1 border rounded disabled:opacity-50"
