@@ -521,6 +521,9 @@ export default function BankMutationsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
   /* =========================
      R E N D E R
      ========================= */
