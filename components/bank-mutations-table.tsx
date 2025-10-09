@@ -15,16 +15,42 @@ type BankLite = {
   account_no: string;
 };
 
-type ProfileLite = { user_id: string; full_name: string | null };
+type ProfileLite = {
+  user_id: string;
+  full_name: string | null;
+};
+
+type Row = {
+  // kolom tabel mutasi
+  // (ID hanya tampilan, dihitung dari urutan tsClick di halaman)
+  tsClick: string; // waktu klik / created_at
+  tsPickTop?: string | null; // waktu final (atas)
+  tsPickBottom?: string | null; // waktu final (bawah) – khusus TT (to)
+  cat:
+    | "Depo"
+    | "WD"
+    | "Pending DP"
+    | "Sesama CM"
+    | "Adjustment"
+    | "Expense";
+  bankTop: string; // [CODE] NAME - NO
+  bankSub?: string; // keterangan di bawah label bank
+  desc?: string | null; // kolom deskripsi
+  amount: number; // jumlah (net utk DP/PDP/Adj/Expense, negatif utk WD & fee TT out)
+  start: number | null; // running balance sebelum
+  finish: number | null; // running balance sesudah
+  by: string; // creator
+};
+
+type LeadSlim = { username: string | null; bank_name: string | null };
 
 type DepositRow = {
   id: number;
   bank_id: number;
   amount_net: number;
   username_snapshot: string;
-  bank_name: string;
-  lead_bank_snapshot: string | null;     // <— baru
-  lead_accno_snapshot: string | null;    // <— baru
+  lead_bank_snapshot: string | null;
+  lead_accno_snapshot: string | null;
   txn_at_opened: string; // waktu klik
   txn_at_final: string;  // waktu dipilih
   created_by: string | null;
@@ -63,11 +89,13 @@ type PendingDepositRow = {
   balance_after?: number | null;
 };
 
-type InterbankRow = {
+type TT = {
   id: number;
   bank_from_id: number;
   bank_to_id: number;
   amount_gross: number;
+  fee_amount: number;
+  description: string | null;
   from_txn_at: string;
   to_txn_at: string;
   created_at: string;
@@ -104,6 +132,12 @@ type ExpenseRow = {
   balance_after?: number | null;
 };
 
+/* =========================
+   C O N S T
+   ========================= */
+
+const PAGE_SIZE = 25;
+
 type LeadSlim = { username: string | null; bank_name: string | null };
 
 /* =========================
@@ -119,22 +153,6 @@ function fmtDateJak(s?: string | null) {
   if (!s) return "—";
   return new Date(s).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 }
-
-/* unified row untuk tabel */
-type Row = {
-  // tampilan
-  tsClick: string; // utk sort/ID
-  tsPickTop?: string | null; // baris 1 Waktu Dipilih
-  tsPickBottom?: string | null; // baris 2 (khusus TT)
-  cat: string;
-  bankTop: string; // [code] name - no
-  bankSub?: string | null; // keterangan di kolom bank (transfer dari/dari player, dst)
-  desc?: string | null; // kolom Desc
-  amount: number; // signed
-  start?: number | null;
-  finish?: number | null;
-  by?: string | null;
-};
 
 /* =========================
    C O M P O N E N T
@@ -154,7 +172,7 @@ export default function BankMutationsTable() {
   const labelBank = (id: number) => {
     const b = bankMap.get(id);
     return b ? `[${b.bank_code}] ${b.account_name} - ${b.account_no}` : `#${id}`;
-    };
+  };
 
   // data utama
   const [rows, setRows] = useState<Row[]>([]);
@@ -167,37 +185,32 @@ export default function BankMutationsTable() {
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
 
-  // who map
+  // pagination
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
+  // who created (map user_id -> full_name)
   const [whoMap, setWhoMap] = useState<Record<string, string>>({});
 
-  // username -> bank_name (untuk DP/WD)
-  const [uname2BankName, setUname2BankName] = useState<Record<string, string>>({});
+  const apply = async (silent?: boolean) => {
+    if (!silent) setLoading(true);
 
-  // load banks once
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("banks")
-        .select("id, bank_code, account_name, account_no")
-        .order("id", { ascending: true });
-      setBankList((data as BankLite[]) ?? []);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // ----- load bank (untuk filter & label) -----
+    const { data: bdata } = await supabase
+      .from("banks")
+      .select("id, bank_code, account_name, account_no")
+      .order("id", { ascending: true });
+    setBankList((bdata as BankLite[]) ?? []);
 
-  const apply = async (pageInit?: boolean) => {
-    setLoading(true);
-
-    // range waktu utk Waktu Click (tiap sumber dipakai kolom berbeda, lihat di bawah)
+    // ----- build filter waktu klik -----
     const hasStart = !!fClickStart;
     const hasFinish = !!fClickFinish;
     const sISO = hasStart ? toIsoStartJakarta(fClickStart) : undefined;
     const eISO = hasFinish ? toIsoEndJakarta(fClickFinish) : undefined;
 
-    // bank filter
-    const bankIdFilter = fBankId && typeof fBankId === "number" ? fBankId : null;
+    const bankIdFilter = fBankId === "" ? undefined : Number(fBankId);
 
-    // ===== ambil semua sumber =====
+    // ===== ambil data per sumber =====
     const [
       depResp,
       wdResp,
@@ -215,9 +228,9 @@ export default function BankMutationsTable() {
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
-        q = q
-          .not("lead_bank_snapshot", "is", null)
-          .not("lead_accno_snapshot", "is", null);
+        // GUARD: DP yang tidak punya snapshot bank/accno di-lead (kasus Assign PDP dobel)
+        q = q.not("lead_bank_snapshot", "is", null)
+             .not("lead_accno_snapshot", "is", null);
         const { data, error } = await q;
         if (error) console.error(error);
         return (data as DepositRow[]) ?? [];
@@ -254,14 +267,15 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("interbank_transfers")
           .select(
-            "id, bank_from_id, bank_to_id, amount_gross, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
-          );
-        // filter di level UI (bank id) karena ada dua bank di tiap transfer
+            "id, bank_from_id, bank_to_id, amount_gross, fee_amount, description, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
+          )
+          .order("created_at", { ascending: false });
+        // filter menggunakan created_at (waktu klik)
         if (hasStart) q = q.gte("created_at", sISO!);
         if (hasFinish) q = q.lte("created_at", eISO!);
         const { data, error } = await q;
         if (error) console.error(error);
-        return (data as InterbankRow[]) ?? [];
+        return (data as TT[]) ?? [];
       })(),
       (async () => {
         let q = supabase
@@ -312,35 +326,15 @@ export default function BankMutationsTable() {
     }
     setWhoMap(byMap);
 
-    // ===== ambil bank_name player utk DP/WD/Depo dari PDP =====
-    const usernames = new Set<string>();
-    depResp.forEach((x) => x.username_snapshot && usernames.add(x.username_snapshot));
-    wdResp.forEach((x) => x.username_snapshot && usernames.add(x.username_snapshot));
-    pdpResp.forEach((x) => x.assigned_username_snapshot && usernames.add(x.assigned_username_snapshot));
-    const unameMap: Record<string, string> = {};
-    if (usernames.size) {
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("username, bank_name")
-        .in("username", Array.from(usernames));
-      (leads as LeadSlim[] | null)?.forEach((l) => {
-        if (l.username) unameMap[l.username] = l.bank_name ?? "-";
-      });
-    }
-    setUname2BankName(unameMap);
-
-    // ===== mapping ke unified rows =====
+    // ===== mapping ke baris mutasi =====
     const result: Row[] = [];
 
-    // DP (langsung)
+    // Depo
+    // (sudah ada GUARD: hanya DP yang memiliki snapshot bank di leads yang masuk)
     for (const r of depResp) {
-      // filter kategori jika dipilih sesuatu selain ALL
       if (fCat && fCat !== "Depo") continue;
-      if (fDesc && !(r.username_snapshot ?? "").toLowerCase().includes(fDesc.toLowerCase())) {
-        // Desc search diterapkan di kolom Desc dan BankSub; utk DP masuk via BankSub
-      }
       const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
+      const bname = String(r.lead_bank_snapshot ?? "-");
       result.push({
         tsClick: r.txn_at_opened,
         tsPickTop: r.txn_at_final,
@@ -355,10 +349,28 @@ export default function BankMutationsTable() {
       });
     }
 
-    // Depo dari PDP (assign)
+    // Depo dari PDP (Assign) → ikut Cat "Depo", waktunya:
+    // - Waktu Click   = assigned_at
+    // - Waktu Dipilih = txn_at_final (kolom PDP)
+    // - Player        = assigned_username_snapshot
+    // - Bank name     = ambil dari leads (map username → bank_name)
+    const unameSet = new Set<string>();
+    pdpResp.forEach((r) => r.assigned_username_snapshot && unameSet.add(r.assigned_username_snapshot));
+    const unameMap: Record<string, string> = {};
+    if (unameSet.size) {
+      const { data: leads } = await supabase
+        .from("leads")
+        .select("username, bank_name")
+        .in("username", Array.from(unameSet));
+      (leads as LeadSlim[] | null)?.forEach((l) => {
+        if (!l.username) return;
+        unameMap[l.username] = l.bank_name ?? "-";
+      });
+    }
     for (const r of pdpResp) {
-      if (!r.is_assigned || !r.assigned_at) continue; // hanya yang sudah assign
+      if (!r.is_assigned || !r.assigned_at) continue;
       if (fCat && fCat !== "Depo") continue;
+
       // filter waktu klik khusus rute ini pakai assigned_at (di luar query awal)
       if (hasStart && r.assigned_at < sISO!) continue;
       if (hasFinish && r.assigned_at > eISO!) continue;
@@ -399,8 +411,9 @@ export default function BankMutationsTable() {
     // WD
     for (const r of wdResp) {
       if (fCat && fCat !== "WD") continue;
+      // tambah bank_name sesuai permintaan
       const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
+      const bname = r.bank_name ?? "-";
       result.push({
         tsClick: r.txn_at_opened,
         tsPickTop: r.txn_at_final,
@@ -420,8 +433,6 @@ export default function BankMutationsTable() {
       // filter bank di level baris karena ada 2 bank
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
       const includeTo = !bankIdFilter || r.bank_to_id === bankIdFilter;
-      const fromLabel = labelBank(r.bank_from_id);
-      const toLabel   = labelBank(r.bank_to_id);
       if (includeFrom) {
         if (!fCat || fCat === "Sesama CM") {
           result.push({
@@ -429,8 +440,8 @@ export default function BankMutationsTable() {
             tsPickTop: r.from_txn_at, // atas = from
             tsPickBottom: r.to_txn_at, // bawah = to
             cat: "Sesama CM",
-            bankTop: fromLabel,
-            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
+            bankTop: labelBank(r.bank_from_id),
+            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
             desc: "—",
             amount: -Number(r.amount_gross || 0),
             start: (r as any).from_balance_before ?? null,
@@ -446,8 +457,8 @@ export default function BankMutationsTable() {
             tsPickTop: r.from_txn_at,
             tsPickBottom: r.to_txn_at,
             cat: "Sesama CM",
-            bankTop: fromLabel,
-            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
+            bankTop: labelBank(r.bank_to_id),
+            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
             desc: "—",
             amount: +Number(r.amount_gross || 0),
             start: (r as any).to_balance_before ?? null,
@@ -468,7 +479,7 @@ export default function BankMutationsTable() {
         bankTop: labelBank(r.bank_id),
         bankSub: r.description ?? "",
         desc: r.description ?? "—",
-        amount: Number(r.amount_delta || 0),
+        amount: +Number(r.amount_delta || 0),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
@@ -483,9 +494,9 @@ export default function BankMutationsTable() {
         tsPickTop: r.txn_at_final,
         cat: "Expense",
         bankTop: labelBank(r.bank_id),
-        bankSub: r.description ?? "",
+        bankSub: r.category_code ?? "",
         desc: r.description ?? "—",
-        amount: Number(r.amount || 0), // biasanya sudah negatif
+        amount: -Number(r.amount || 0),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
@@ -517,18 +528,19 @@ export default function BankMutationsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* =========================
-     R E N D E R
-     ========================= */
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const displayNumber = (idxOnPage: number) =>
+    pageRows.length - idxOnPage; // 9..1 di halaman (sesuai contohmu)
 
   return (
     <div className="space-y-3">
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* FILTERS */}
+            {/* Row FILTERS */}
             <tr className="filters">
-              <th className="w-24">
+              {/* ID + tombol Cari */}
+              <th className="w-16">
                 <button
                   className="border rounded px-2 py-1 text-xs"
                   onClick={() => apply(true)}
@@ -577,26 +589,25 @@ export default function BankMutationsTable() {
               </th>
 
               {/* Bank */}
-              <th className="w-56">
+              <th>
                 <select
-                  value={fBankId}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFBankId(v === "" ? "" : Number(v));
-                  }}
+                  value={fBankId === "" ? "" : String(fBankId)}
+                  onChange={(e) =>
+                    setFBankId(e.target.value === "" ? "" : Number(e.target.value))
+                  }
                   className="border rounded px-2 py-1 w-full"
                 >
                   <option value="">ALL BANK</option>
                   {bankList.map((b) => (
                     <option key={b.id} value={b.id}>
-                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                      {[b.bank_code]} {b.account_name} - {b.account_no}
                     </option>
                   ))}
                 </select>
               </th>
 
-              {/* Search Desc */}
-              <th className="w-56">
+              {/* Search desc */}
+              <th>
                 <input
                   placeholder="Search desc"
                   value={fDesc}
@@ -605,9 +616,9 @@ export default function BankMutationsTable() {
                 />
               </th>
 
-              <th colSpan={4} className="text-left">
+              <th className="whitespace-nowrap">
                 <button
-                  onClick={() => apply(true)}
+                  onClick={() => apply()}
                   className="rounded bg-blue-600 text-white px-3 py-1"
                 >
                   Submit
@@ -640,39 +651,74 @@ export default function BankMutationsTable() {
                 <td colSpan={10}>No data</td>
               </tr>
             ) : (
-              rows.map((r, i) => {
-                const dispId = rows.length - i; // nomor urut (terbaru paling besar)
-                return (
-                  <tr key={`${r.tsClick}-${i}`} className="align-top">
-                    <td>{dispId}</td>
-                    <td>{fmtDateJak(r.tsClick)}</td>
-                    <td>
-                      <div className="whitespace-pre-line">
-                        {fmtDateJak(r.tsPickTop)}
-                        {r.tsPickBottom ? "\n" + fmtDateJak(r.tsPickBottom) : ""}
-                      </div>
-                    </td>
-                    <td>{r.cat}</td>
-                    <td className="whitespace-normal break-words">
-                      <div className="font-semibold">{r.bankTop}</div>
-                      {r.bankSub && (
-                        <>
-                          <div className="border-t my-1" />
-                          <div>{r.bankSub}</div>
-                        </>
-                      )}
-                    </td>
-                    <td className="whitespace-normal break-words">{r.desc ?? "—"}</td>
-                    <td>{formatAmount(r.amount)}</td>
-                    <td>{r.start == null ? "—" : formatAmount(r.start)}</td>
-                    <td>{r.finish == null ? "—" : formatAmount(r.finish)}</td>
-                    <td>{r.by ?? "-"}</td>
-                  </tr>
-                );
-              })
+              pageRows.map((r, idx) => (
+                <tr key={`${r.tsClick}-${idx}`} className="hover:bg-gray-50">
+                  {/* ID diturunkan dari urutan di halaman */}
+                  <td>{displayNumber(idx)}</td>
+                  <td>
+                    {fmtDateJak(r.tsClick)}
+                  </td>
+                  <td>
+                    <div>{fmtDateJak(r.tsPickTop)}</div>
+                    {r.tsPickBottom ? <div>{fmtDateJak(r.tsPickBottom)}</div> : null}
+                  </td>
+                  <td>{r.cat}</td>
+                  <td className="whitespace-normal break-words">
+                    <div className="font-semibold">{r.bankTop}</div>
+                    {r.bankSub && (
+                      <>
+                        <div className="border-t my-1"></div>
+                        <div>{r.bankSub}</div>
+                      </>
+                    )}
+                  </td>
+                  <td className="whitespace-normal break-words">{r.desc ?? "—"}</td>
+                  <td className="text-left">{formatAmount(r.amount)}</td>
+                  <td className="text-left">{r.start == null ? "—" : formatAmount(r.start)}</td>
+                  <td className="text-left">{r.finish == null ? "—" : formatAmount(r.finish)}</td>
+                  <td>{r.by}</td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* pagination 25 */}
+      <div className="flex justify-center">
+        <nav className="inline-flex items-center gap-1 text-sm select-none">
+          <button
+            onClick={() => { if (page > 1) setPage(1); }}
+            disabled={page <= 1}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            First
+          </button>
+          <button
+            onClick={() => { if (page > 1) setPage(page - 1); }}
+            disabled={page <= 1}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="px-3 py-1 rounded border bg-white">
+            Page {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => { if (page < totalPages) setPage(page + 1); }}
+            disabled={page >= totalPages}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => { if (page < totalPages) setPage(totalPages); }}
+            disabled={page >= totalPages}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Last
+          </button>
+        </nav>
       </div>
     </div>
   );
