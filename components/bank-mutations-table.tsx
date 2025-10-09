@@ -22,10 +22,13 @@ type DepositRow = {
   bank_id: number;
   amount_net: number;
   username_snapshot: string | null;
-  txn_at_opened: string; // waktu klik
-  txn_at_final: string;  // waktu dipilih
+  lead_name_snapshot: string | null;
+  lead_bank_snapshot: string | null;
+  lead_accno_snapshot: string | null;
+  txn_at_opened: string; // Waktu Click
+  txn_at_final: string;  // Waktu Dipilih
   created_by: string | null;
-  // kolom baru:
+  // kolom baru untuk running balance (boleh null di data lama)
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -48,41 +51,25 @@ type PendingDepositRow = {
   bank_id: number;
   amount_net: number;
   description: string | null;
-  txn_at_opened: string;
-  txn_at_final: string;
-  is_assigned: boolean;
+  // assign PDP → masuk sebagai Depo
+  assigned_at: string | null;              // Waktu Click (untuk rute assign)
+  txn_at_final: string;                    // Waktu Dipilih (untuk rute assign)
   assigned_username_snapshot: string | null;
-  assigned_at: string | null;
-  created_by: string | null;
+  created_by: string | null;               // creator PDP
   // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
 
-type InterbankRow = {
-  id: number;
-  bank_from_id: number;
-  bank_to_id: number;
-  amount_gross: number;
-  from_txn_at: string;
-  to_txn_at: string;
-  created_at: string;
-  created_by: string | null;
-  // kolom baru (opsional – aman jika belum ada di DB):
-  from_balance_before?: number | null;
-  from_balance_after?: number | null;
-  to_balance_before?: number | null;
-  to_balance_after?: number | null;
-};
-
 type AdjustmentRow = {
   id: number;
   bank_id: number;
-  amount_delta: number;
+  amount: number;
   description: string | null;
+  txn_at_opened: string;
   txn_at_final: string;
-  created_at: string;
   created_by: string | null;
+  // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -90,47 +77,56 @@ type AdjustmentRow = {
 type ExpenseRow = {
   id: number;
   bank_id: number;
-  amount: number; // negatif
+  amount: number; // selalu negatif
   category_code: string | null;
   description: string | null;
-  txn_at_final: string;
-  created_at: string;
+  created_at: string;  // dipakai Tgl (sesuai instruksi)
+  txn_at_final: string; // dipertahankan jika perlu
   created_by: string | null;
+  // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
 
-type LeadSlim = { username: string | null; bank_name: string | null };
+type TT = {
+  id: number;
+  bank_from_id: number;
+  bank_to_id: number;
+  amount_gross: number;
+  fee_amount: number;
+  created_at: string;   // Waktu Click (satu baris)
+  from_txn_at: string;  // Waktu Dipilih (atas)
+  to_txn_at: string;    // Waktu Dipilih (bawah)
+  description: string | null;
+  created_by: string | null;
+  // kolom baru:
+  balance_before_from?: number | null;
+  balance_after_from?: number | null;
+  balance_before_to?: number | null;
+  balance_after_to?: number | null;
+};
 
 /* =========================
-   U T I L
+   H E L P E R S
    ========================= */
 
-const toIsoStartJakarta = (d: string) =>
+// YYYY-MM-DD -> ISO (Asia/Jakarta start/end)
+const startIsoJakarta = (d: string) =>
   new Date(`${d}T00:00:00+07:00`).toISOString();
-const toIsoEndJakarta = (d: string) =>
+const endIsoJakarta = (d: string) =>
   new Date(`${d}T23:59:59.999+07:00`).toISOString();
 
-function fmtDateJak(s?: string | null) {
-  if (!s) return "—";
-  return new Date(s).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+// Render tanggal lokal (Asia/Jakarta)
+function fmtDateJak(iso?: string | null) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
+  } catch {
+    return iso ?? "";
+  }
 }
 
-/* unified row untuk tabel */
-type Row = {
-  // tampilan
-  tsClick: string; // utk sort/ID
-  tsPickTop?: string | null; // baris 1 Waktu Dipilih
-  tsPickBottom?: string | null; // baris 2 (khusus TT)
-  cat: string;
-  bankTop: string; // [code] name - no
-  bankSub?: string | null; // keterangan di kolom bank (transfer dari/dari player, dst)
-  desc?: string | null; // kolom Desc
-  amount: number; // signed
-  start?: number | null;
-  finish?: number | null;
-  by?: string | null;
-};
+const PAGE_SIZE = 100;
 
 /* =========================
    C O M P O N E N T
@@ -139,485 +135,533 @@ type Row = {
 export default function BankMutationsTable() {
   const supabase = supabaseBrowser();
 
-  // options bank utk filter + label
-  const [bankList, setBankList] = useState<BankLite[]>([]);
-  const bankMap = useMemo(() => {
-    const m = new Map<number, BankLite>();
-    bankList.forEach((b) => m.set(b.id, b));
-    return m;
-  }, [bankList]);
-
-  const labelBank = (id: number) => {
-    const b = bankMap.get(id);
-    return b ? `[${b.bank_code}] ${b.account_name} - ${b.account_no}` : `#${id}`;
-    };
-
-  // data utama
-  const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // filters (sesuai versi yang sudah cocok sebelumnya)
-  const [fClickStart, setFClickStart] = useState("");
-  const [fClickFinish, setFClickFinish] = useState("");
-  const [fCat, setFCat] = useState<"" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense">("");
-  const [fBankId, setFBankId] = useState<"" | number>("");
-  const [fDesc, setFDesc] = useState("");
+  // data
+  const [banks, setBanks] = useState<BankLite[]>([]);
+  const [byMap, setByMap] = useState<Record<string, string>>({});
 
-  // who map
-  const [whoMap, setWhoMap] = useState<Record<string, string>>({});
+  // result after join
+  type Row = {
+    id: string | number;
+    cat:
+      | "Depo"
+      | "WD"
+      | "Pending DP"
+      | "Adjustment"
+      | "Expense"
+      | "Sesama CM";
+    // waktu
+    tsClickTop?: string | null;     // baris atas kolom Waktu Click (TT hanya 1 baris: created_at)
+    tsClickBottom?: string | null;  // baris bawah kolom Waktu Click (umumnya kosong)
+    tsPickTop?: string | null;      // baris atas kolom Waktu Dipilih (TT: from)
+    tsPickBottom?: string | null;   // baris bawah kolom Waktu Dipilih (TT: to)
+    // bank
+    bank_id: number;
+    bankLabel: string;
+    bankDesc: string; // teks di bawah garis pemisah (unik per kategori)
+    // amount & balance
+    amount: number;
+    start?: number | null;
+    finish?: number | null;
+    // who
+    byName: string;
+  };
 
-  // username -> bank_name (untuk DP/WD)
-  const [uname2BankName, setUname2BankName] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<Row[]>([]);
 
-  // load banks once
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("banks")
-        .select("id, bank_code, account_name, account_no")
-        .order("id", { ascending: true });
-      setBankList((data as BankLite[]) ?? []);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // filter & paging
+  const [fStart, setFStart] = useState<string>("");
+  const [fFinish, setFFinish] = useState<string>("");
+  const [fCat, setFCat] = useState<
+    "" | "Depo" | "WD" | "Pending DP" | "Adjustment" | "Expense" | "Sesama CM"
+  >("");
+  const [fBankId, setFBankId] = useState<number | "ALL">("ALL");
 
-  const apply = async (pageInit?: boolean) => {
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // label bank
+  const bankLabel = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const b of banks) {
+      map[b.id] = `[${b.bank_code}] ${b.account_name} - ${b.account_no}`;
+    }
+    return (id: number) => map[id] ?? `#${id}`;
+  }, [banks]);
+
+  /* ===== LOAD ===== */
+  const load = async (pageToLoad = page) => {
     setLoading(true);
 
-    // range waktu utk Waktu Click (tiap sumber dipakai kolom berbeda, lihat di bawah)
-    const hasStart = !!fClickStart;
-    const hasFinish = !!fClickFinish;
-    const sISO = hasStart ? toIsoStartJakarta(fClickStart) : undefined;
-    const eISO = hasFinish ? toIsoEndJakarta(fClickFinish) : undefined;
+    // banks
+    const { data: bankData } = await supabase
+      .from("banks")
+      .select("id, bank_code, account_name, account_no");
+    setBanks((bankData as BankLite[]) ?? []);
 
-    // bank filter
-    const bankIdFilter = fBankId && typeof fBankId === "number" ? fBankId : null;
+    // build filters
+    const hasStart = !!fStart;
+    const hasFinish = !!fFinish;
+    const sISO = hasStart ? startIsoJakarta(fStart) : null;
+    const eISO = hasFinish ? endIsoJakarta(fFinish) : null;
+    const bankIdFilter = fBankId === "ALL" ? null : (fBankId as number);
 
-    // ===== ambil semua sumber =====
-    const [
-      depResp,
-      wdResp,
-      pdpResp,
-      ttResp,
-      adjResp,
-      expResp,
-    ] = await Promise.all([
-      (async () => {
-        let q = supabase
-          .from("deposits")
-          .select(
-            "id, bank_id, amount_net, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+    // fetch data paralel
+    const [deposits, withdrawals, pendings, adjustments, expenses, tts] =
+      await Promise.all([
+        // ===== Deposits (mutasi Depo)
+        (async () => {
+          let q = supabase
+            .from("deposits")
+            .select(
+              "id, bank_id, amount_net, username_snapshot, lead_name_snapshot, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            );
+          if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
+          if (hasStart) q = q.gte("txn_at_opened", sISO!);
+          if (hasFinish) q = q.lte("txn_at_opened", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as DepositRow[];
+          }
+          return (data as DepositRow[]) ?? [];
+        })(),
+        // ===== Withdrawals (mutasi WD)
+        (async () => {
+          let q = supabase
+            .from("withdrawals")
+            .select(
+              "id, bank_id, amount_gross, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            );
+          if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
+          if (hasStart) q = q.gte("txn_at_opened", sISO!);
+          if (hasFinish) q = q.lte("txn_at_opened", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as WithdrawalRow[];
+          }
+          return (data as WithdrawalRow[]) ?? [];
+        })(),
+        // ===== Pending Deposits (mutasi Pending DP + rute Assign → Depo)
+        (async () => {
+          let q = supabase
+            .from("pending_deposits")
+            .select(
+              "id, bank_id, amount_net, description, assigned_at, txn_at_final, assigned_username_snapshot, created_by, balance_before, balance_after"
+            );
+          if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
+          if (hasStart) q = q.gte("txn_at_final", sISO!);
+          if (hasFinish) q = q.lte("txn_at_final", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as PendingDepositRow[];
+          }
+          return (data as PendingDepositRow[]) ?? [];
+        })(),
+        // ===== Adjustments
+        (async () => {
+          let q = supabase
+            .from("bank_adjustments")
+            .select(
+              "id, bank_id, amount, description, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            );
+          if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
+          if (hasStart) q = q.gte("txn_at_opened", sISO!);
+          if (hasFinish) q = q.lte("txn_at_opened", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as AdjustmentRow[];
+          }
+          return (data as AdjustmentRow[]) ?? [];
+        })(),
+        // ===== Expenses (Biaya)
+        (async () => {
+          let q = supabase
+            .from("bank_expenses")
+            .select(
+              "id, bank_id, amount, category_code, description, created_at, txn_at_final, created_by, balance_before, balance_after"
+            )
+            .order("created_at", { ascending: false }); // mengikuti halaman expenses
+          if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
+          if (hasStart) q = q.gte("created_at", sISO!);
+          if (hasFinish) q = q.lte("created_at", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as ExpenseRow[];
+          }
+          return (data as ExpenseRow[]) ?? [];
+        })(),
+        // ===== Interbank Transfers (Sesama CM)
+        (async () => {
+          let q = supabase
+            .from("interbank_transfers")
+            .select(
+              "id, bank_from_id, bank_to_id, amount_gross, fee_amount, created_at, from_txn_at, to_txn_at, description, created_by, balance_before_from, balance_after_from, balance_before_to, balance_after_to"
+            )
+            .order("created_at", { ascending: false });
+          if (bankIdFilter) q = q.or(
+            `bank_from_id.eq.${bankIdFilter},bank_to_id.eq.${bankIdFilter}`
           );
-        if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        if (hasStart) q = q.gte("txn_at_opened", sISO!);
-        if (hasFinish) q = q.lte("txn_at_opened", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as DepositRow[]) ?? [];
-      })(),
-      (async () => {
-        let q = supabase
-          .from("withdrawals")
-          .select(
-            "id, bank_id, amount_gross, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
-          );
-        if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        if (hasStart) q = q.gte("txn_at_opened", sISO!);
-        if (hasFinish) q = q.lte("txn_at_opened", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as WithdrawalRow[]) ?? [];
-      })(),
-      (async () => {
-        let q = supabase
-          .from("pending_deposits")
-          .select(
-            "id, bank_id, amount_net, description, txn_at_opened, txn_at_final, is_assigned, assigned_username_snapshot, assigned_at, created_by, balance_before, balance_after"
-          );
-        if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        // Untuk baris "Pending DP" → filter pakai txn_at_opened.
-        // Untuk baris "Depo dari PDP (assign)" → filter pakai assigned_at (di-mapping di bawah).
-        if (hasStart) q = q.gte("txn_at_opened", sISO!);
-        if (hasFinish) q = q.lte("txn_at_opened", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as PendingDepositRow[]) ?? [];
-      })(),
-      (async () => {
-        let q = supabase
-          .from("interbank_transfers")
-          .select(
-            "id, bank_from_id, bank_to_id, amount_gross, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
-          );
-        // filter di level UI (bank id) karena ada dua bank di tiap transfer
-        if (hasStart) q = q.gte("created_at", sISO!);
-        if (hasFinish) q = q.lte("created_at", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as InterbankRow[]) ?? [];
-      })(),
-      (async () => {
-        let q = supabase
-          .from("bank_adjustments")
-          .select(
-            "id, bank_id, amount_delta, description, txn_at_final, created_at, created_by, balance_before, balance_after"
-          );
-        if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        if (hasStart) q = q.gte("created_at", sISO!);
-        if (hasFinish) q = q.lte("created_at", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as AdjustmentRow[]) ?? [];
-      })(),
-      (async () => {
-        let q = supabase
-          .from("bank_expenses")
-          .select(
-            "id, bank_id, amount, category_code, description, txn_at_final, created_at, created_by, balance_before, balance_after"
-          );
-        if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        if (hasStart) q = q.gte("created_at", sISO!);
-        if (hasFinish) q = q.lte("created_at", eISO!);
-        const { data, error } = await q;
-        if (error) console.error(error);
-        return (data as ExpenseRow[]) ?? [];
-      })(),
-    ]);
+          if (hasStart) q = q.gte("created_at", sISO!);
+          if (hasFinish) q = q.lte("created_at", eISO!);
+          const { data, error } = await q;
+          if (error) {
+            console.error(error);
+            return [] as TT[];
+          }
+          return (data as TT[]) ?? [];
+        })(),
+      ]);
 
-    // ===== ambil nama "by" (created_by -> full_name) =====
-    const byIds = new Set<string>();
-    depResp.forEach((x) => x.created_by && byIds.add(x.created_by));
-    wdResp.forEach((x) => x.created_by && byIds.add(x.created_by));
-    pdpResp.forEach((x) => x.created_by && byIds.add(x.created_by));
-    ttResp.forEach((x) => x.created_by && byIds.add(x.created_by));
-    adjResp.forEach((x) => x.created_by && byIds.add(x.created_by));
-    expResp.forEach((x) => x.created_by && byIds.add(x.created_by));
+    // map who
+    const uids = new Set<string>();
+    for (const d of deposits) if (d.created_by) uids.add(d.created_by);
+    for (const d of withdrawals) if (d.created_by) uids.add(d.created_by);
+    for (const d of pendings) if (d.created_by) uids.add(d.created_by);
+    for (const d of adjustments) if (d.created_by) uids.add(d.created_by);
+    for (const d of expenses) if (d.created_by) uids.add(d.created_by);
+    for (const d of tts) if (d.created_by) uids.add(d.created_by);
 
-    const byMap: Record<string, string> = {};
-    if (byIds.size) {
+    let who: Record<string, string> = {};
+    if (uids.size) {
       const { data: profs } = await supabase
         .from("profiles")
         .select("user_id, full_name")
-        .in("user_id", Array.from(byIds));
+        .in("user_id", Array.from(uids));
       (profs as ProfileLite[] | null)?.forEach((p) => {
-        byMap[p.user_id] = p.full_name ?? p.user_id.slice(0, 8);
+        who[p.user_id] = p.full_name ?? p.user_id.slice(0, 8);
       });
     }
-    setWhoMap(byMap);
+    setByMap(who);
 
-    // ===== ambil bank_name player utk DP/WD/Depo dari PDP =====
-    const usernames = new Set<string>();
-    depResp.forEach((x) => x.username_snapshot && usernames.add(x.username_snapshot));
-    wdResp.forEach((x) => x.username_snapshot && usernames.add(x.username_snapshot));
-    pdpResp.forEach((x) => x.assigned_username_snapshot && usernames.add(x.assigned_username_snapshot));
-    const unameMap: Record<string, string> = {};
-    if (usernames.size) {
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("username, bank_name")
-        .in("username", Array.from(usernames));
-      (leads as LeadSlim[] | null)?.forEach((l) => {
-        if (l.username) unameMap[l.username] = l.bank_name ?? "-";
-      });
-    }
-    setUname2BankName(unameMap);
+    const bankStr = (id: number) => bankLabel(id);
 
-    // ===== mapping ke unified rows =====
-    const result: Row[] = [];
+    const out: Row[] = [];
 
-    // DP (langsung)
-    for (const r of depResp) {
-      // filter kategori jika dipilih sesuatu selain ALL
-      if (fCat && fCat !== "Depo") continue;
-      if (fDesc && !(r.username_snapshot ?? "").toLowerCase().includes(fDesc.toLowerCase())) {
-        // Desc search diterapkan di kolom Desc dan BankSub; utk DP masuk via BankSub
-      }
-      const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
-      result.push({
-        tsClick: r.txn_at_opened,
-        tsPickTop: r.txn_at_final,
+    // ==== Depo ====
+    for (const r of deposits) {
+      // GUARD: abaikan DP yang berasal dari assign PDP TANPA snapshot bank player
+      if (!r.lead_bank_snapshot || !r.lead_accno_snapshot) continue;
+
+      out.push({
+        id: `DP-${r.id}`,
         cat: "Depo",
-        bankTop: labelBank(r.bank_id),
-        bankSub: `Depo dari ${uname} / ${bname}`,
-        desc: "—",
-        amount: +Number(r.amount_net || 0),
+        tsClickTop: r.txn_at_opened,
+        tsPickTop: r.txn_at_final,
+        bank_id: r.bank_id,
+        bankLabel: bankStr(r.bank_id),
+        bankDesc: `Depo dari ${r.username_snapshot ?? "-"} / ${
+          r.lead_name_snapshot ?? "-"
+        }`,
+        amount: Number(r.amount_net || 0),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
       });
     }
 
-    // Depo dari PDP (assign)
-    for (const r of pdpResp) {
-      if (!r.is_assigned || !r.assigned_at) continue; // hanya yang sudah assign
-      if (fCat && fCat !== "Depo") continue;
-      // filter waktu klik khusus rute ini pakai assigned_at (di luar query awal)
-      if (hasStart && r.assigned_at < sISO!) continue;
-      if (hasFinish && r.assigned_at > eISO!) continue;
-
-      const uname = r.assigned_username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
-      result.push({
-        tsClick: r.assigned_at,
-        tsPickTop: r.txn_at_final,
-        cat: "Depo",
-        bankTop: labelBank(r.bank_id),
-        bankSub: `Depo dari ${uname} / ${bname}`,
-        desc: "—",
-        amount: +Number(r.amount_net || 0),
-        start: r.balance_before ?? null,
-        finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
-      });
-    }
-
-    // Pending DP (tetap ada, tidak dihapus meski sudah assign)
-    for (const r of pdpResp) {
-      if (fCat && fCat !== "Pending DP") continue;
-      result.push({
-        tsClick: r.txn_at_opened,
-        tsPickTop: r.txn_at_final,
-        cat: "Pending DP",
-        bankTop: labelBank(r.bank_id),
-        bankSub: "Pending Deposit",
-        desc: r.description ?? "—",
-        amount: +Number(r.amount_net || 0),
-        start: r.balance_before ?? null,
-        finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
-      });
-    }
-
-    // WD
-    for (const r of wdResp) {
-      if (fCat && fCat !== "WD") continue;
-      const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
-      result.push({
-        tsClick: r.txn_at_opened,
-        tsPickTop: r.txn_at_final,
+    // ==== WD ====
+    for (const r of withdrawals) {
+      out.push({
+        id: `WD-${r.id}`,
         cat: "WD",
-        bankTop: labelBank(r.bank_id),
-        bankSub: `WD dari ${uname} / ${bname}`,
-        desc: "—",
-        amount: -Number(r.amount_gross || 0),
+        tsClickTop: r.txn_at_opened,
+        tsPickTop: r.txn_at_final,
+        bank_id: r.bank_id,
+        bankLabel: bankStr(r.bank_id),
+        bankDesc: `WD dari ${r.username_snapshot ?? "-"}`,
+        amount: -Math.abs(Number(r.amount_gross || 0)),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
       });
     }
 
-    // TT (Sesama CM) → 2 baris
-    for (const r of ttResp) {
-      // filter bank di level baris karena ada 2 bank
-      const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
-      const includeTo = !bankIdFilter || r.bank_to_id === bankIdFilter;
-      if (includeFrom) {
-        if (!fCat || fCat === "Sesama CM") {
-          result.push({
-            tsClick: r.created_at, // waktu klik
-            tsPickTop: r.from_txn_at, // atas = from
-            tsPickBottom: r.to_txn_at, // bawah = to
-            cat: "Sesama CM",
-            bankTop: labelBank(r.bank_from_id),
-            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
-            desc: "—",
-            amount: -Number(r.amount_gross || 0),
-            start: (r as any).from_balance_before ?? null,
-            finish: (r as any).from_balance_after ?? null,
-            by: r.created_by ? byMap[r.created_by] : "-",
-          });
-        }
+    // ==== Pending Deposit (tetap ditampilkan, termasuk yg sudah assign) ====
+    for (const r of pendings) {
+      // Rute assign PDP → ikut Depo (sesuai instruksi)
+      if (r.assigned_at && r.assigned_username_snapshot) {
+        out.push({
+          id: `DP-${r.id}`, // tetap diberi prefix DP (assign PDP → Depo)
+          cat: "Depo",
+          tsClickTop: r.assigned_at,
+          tsPickTop: r.txn_at_final,
+          bank_id: r.bank_id,
+          bankLabel: bankStr(r.bank_id),
+          bankDesc: `Depo dari ${r.assigned_username_snapshot} / -`,
+          amount: Number(r.amount_net || 0),
+          start: r.balance_before ?? null,
+          finish: r.balance_after ?? null,
+          byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
+        });
       }
-      if (includeTo) {
-        if (!fCat || fCat === "Sesama CM") {
-          result.push({
-            tsClick: r.created_at,
-            tsPickTop: r.from_txn_at,
-            tsPickBottom: r.to_txn_at,
-            cat: "Sesama CM",
-            bankTop: labelBank(r.bank_to_id),
-            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
-            desc: "—",
-            amount: +Number(r.amount_gross || 0),
-            start: (r as any).to_balance_before ?? null,
-            finish: (r as any).to_balance_after ?? null,
-            by: r.created_by ? byMap[r.created_by] : "-",
-          });
-        }
-      }
+
+      // Tetap catat mutasi Pending DP-nya sendiri (tidak dihapus)
+      out.push({
+        id: `PDP-${r.id}`,
+        cat: "Pending DP",
+        tsClickTop: r.txn_at_final, // PDP: pakai txn_at_final sebagai Waktu Click
+        tsPickTop: "", // kosong
+        bank_id: r.bank_id,
+        bankLabel: bankStr(r.bank_id),
+        bankDesc: "Pending Deposit",
+        amount: Number(r.amount_net || 0),
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
+        byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
+      });
     }
 
-    // Adjustment
-    for (const r of adjResp) {
-      if (fCat && fCat !== "Adjustment") continue;
-      result.push({
-        tsClick: r.created_at,
-        tsPickTop: r.txn_at_final,
+    // ==== Adjustment ====
+    for (const r of adjustments) {
+      out.push({
+        id: `ADJ-${r.id}`,
         cat: "Adjustment",
-        bankTop: labelBank(r.bank_id),
-        bankSub: r.description ?? "",
-        desc: r.description ?? "—",
-        amount: Number(r.amount_delta || 0),
-        start: r.balance_before ?? null,
-        finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
-      });
-    }
-
-    // Expense
-    for (const r of expResp) {
-      if (fCat && fCat !== "Expense") continue;
-      result.push({
-        tsClick: r.created_at,
+        tsClickTop: r.txn_at_opened,
         tsPickTop: r.txn_at_final,
-        cat: "Expense",
-        bankTop: labelBank(r.bank_id),
-        bankSub: r.description ?? "",
-        desc: r.description ?? "—",
-        amount: Number(r.amount || 0), // biasanya sudah negatif
+        bank_id: r.bank_id,
+        bankLabel: bankStr(r.bank_id),
+        bankDesc: r.description ?? "",
+        amount: Number(r.amount || 0),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
       });
     }
 
-    // filter "Search desc"
-    const filtered = fDesc.trim()
-      ? result.filter((r) => {
-          const hay =
-            (r.desc ?? "") +
-            " " +
-            (r.bankSub ?? "") +
-            " " +
-            (r.bankTop ?? "");
-          return hay.toLowerCase().includes(fDesc.trim().toLowerCase());
-        })
-      : result;
+    // ==== Expense ====
+    for (const r of expenses) {
+      out.push({
+        id: `EXP-${r.id}`,
+        cat: "Expense",
+        tsClickTop: r.created_at, // Tgl di Expenses pakai created_at
+        tsPickTop: r.txn_at_final || null,
+        bank_id: r.bank_id,
+        bankLabel: bankStr(r.bank_id),
+        bankDesc: r.description ?? "",
+        amount: Number(r.amount || 0), // selalu negatif di table ini
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
+        byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
+      });
+    }
 
-    // sort: ID dari timestamp seluruh transaksi (klik) → terbaru paling atas
-    filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
+    // ==== Sesama CM (TT) ====
+    for (const r of tts) {
+      // FROM
+      if (!bankIdFilter || bankIdFilter === r.bank_from_id) {
+        out.push({
+          id: `TT-${r.id}-FROM`,
+          cat: "Sesama CM",
+          tsClickTop: r.created_at,
+          tsPickTop: r.from_txn_at,
+          tsPickBottom: r.to_txn_at,
+          bank_id: r.bank_from_id,
+          bankLabel: bankStr(r.bank_from_id),
+          bankDesc: `Transfer dari ${bankStr(r.bank_from_id)} ke ${bankStr(
+            r.bank_to_id
+          )}`,
+          amount: -Math.abs(Number(r.amount_gross || 0)),
+          start: r.balance_before_from ?? null,
+          finish: r.balance_after_from ?? null,
+          byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
+        });
+      }
+      // TO
+      if (!bankIdFilter || bankIdFilter === r.bank_to_id) {
+        out.push({
+          id: `TT-${r.id}-TO`,
+          cat: "Sesama CM",
+          tsClickTop: r.created_at,
+          tsPickTop: r.from_txn_at,
+          tsPickBottom: r.to_txn_at,
+          bank_id: r.bank_to_id,
+          bankLabel: bankStr(r.bank_to_id),
+          bankDesc: `Transfer dari ${bankStr(r.bank_from_id)} ke ${bankStr(
+            r.bank_to_id
+          )}`,
+          amount: Number(r.amount_gross || 0),
+          start: r.balance_before_to ?? null,
+          finish: r.balance_after_to ?? null,
+          byName: r.created_by ? who[r.created_by] ?? r.created_by : "-",
+        });
+      }
+    }
 
-    setRows(filtered);
+    // urut berdasarkan Waktu Click (top) ascending untuk ID 1..n,
+    // tapi ditampilkan descending (terbaru di atas)
+    const sortedAsc = out
+      .map((r) => ({
+        ...r,
+        sortTs: r.tsClickTop
+          ? new Date(r.tsClickTop).getTime()
+          : 0,
+      }))
+      .sort((a, b) => a.sortTs - b.sortTs);
+
+    // assign ID urut (1..n), lalu tampilkan DESC
+    const numbered = sortedAsc.map((r, idx) => ({ ...r, seq: idx + 1 }));
+    const desc = numbered.sort((a, b) => b.seq - a.seq);
+
+    setRows(desc);
+    setTotal(desc.length);
+    setPage(1);
     setLoading(false);
   };
 
   useEffect(() => {
-    apply(true);
+    load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const applyFilters = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    load(1);
+  };
+
+  // paging helpers
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+  const goFirst = () => canPrev && setPage(1);
+  const goPrev = () => canPrev && setPage((p) => Math.max(1, p - 1));
+  const goNext = () => canNext && setPage((p) => Math.min(totalPages, p + 1));
+  const goLast = () => canNext && setPage(totalPages);
+
+  // options banks
+  const bankOptions = useMemo(
+    () =>
+      banks.map((b) => ({
+        id: b.id,
+        label: `[${b.bank_code}] ${b.account_name} - ${b.account_no}`,
+      })),
+    [banks]
+  );
 
   /* =========================
      R E N D E R
      ========================= */
-
   return (
     <div className="space-y-3">
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
+        <table
+          className="table-grid min-w-[1100px]"
+          style={{ borderCollapse: "collapse" }}
+        >
           <thead>
-            {/* FILTERS */}
+            {/* ===== FILTERS (layout seperti contoh) ===== */}
             <tr className="filters">
-              <th className="w-24">
-                <button
-                  className="border rounded px-2 py-1 text-xs"
-                  onClick={() => apply(true)}
-                  title="Cari (apply filter)"
-                >
-                  Cari
-                </button>
+              {/* ID search */}
+              <th className="w-20">
+                <input
+                  placeholder="Cari ID"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyFilters();
+                  }}
+                  className="w-full border rounded px-2 py-1"
+                  aria-label="Cari ID"
+                />
               </th>
 
-              {/* Waktu Click (atas=batas awal, bawah=batas akhir) */}
-              <th className="w-44">
+              {/* Waktu Click (atas/bawah) */}
+              <th>
                 <div className="flex flex-col gap-1">
                   <input
                     type="date"
-                    value={fClickStart}
-                    onChange={(e) => setFClickStart(e.target.value)}
+                    value={fStart}
+                    onChange={(e) => setFStart(e.target.value)}
                     className="border rounded px-2 py-1"
                   />
                   <input
                     type="date"
-                    value={fClickFinish}
-                    onChange={(e) => setFClickFinish(e.target.value)}
+                    value={fFinish}
+                    onChange={(e) => setFFinish(e.target.value)}
                     className="border rounded px-2 py-1"
                   />
                 </div>
               </th>
 
-              {/* Waktu Dipilih (tidak ada filter – kolom ini dikunci lebar) */}
-              <th className="w-44"></th>
+              {/* Waktu Dipilih: tidak ada filter */}
+              <th></th>
 
               {/* Cat */}
-              <th className="w-28">
+              <th className="w-36">
                 <select
                   value={fCat}
-                  onChange={(e) => setFCat(e.target.value as any)}
+                  onChange={(e) =>
+                    setFCat(e.target.value as typeof fCat)
+                  }
                   className="border rounded px-2 py-1 w-full"
                 >
                   <option value="">ALL</option>
-                  <option value="Sesama CM">Sesama CM</option>
                   <option value="Depo">Depo</option>
-                  <option value="Pending DP">Pending DP</option>
                   <option value="WD">WD</option>
+                  <option value="Pending DP">Pending DP</option>
                   <option value="Adjustment">Adjustment</option>
                   <option value="Expense">Expense</option>
+                  <option value="Sesama CM">Sesama CM</option>
                 </select>
               </th>
 
               {/* Bank */}
-              <th className="w-56">
+              <th className="w-64">
                 <select
-                  value={fBankId}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFBankId(v === "" ? "" : Number(v));
-                  }}
+                  value={fBankId === "ALL" ? "" : String(fBankId)}
+                  onChange={(e) =>
+                    setFBankId(e.target.value ? Number(e.target.value) : "ALL")
+                  }
                   className="border rounded px-2 py-1 w-full"
                 >
                   <option value="">ALL BANK</option>
-                  {bankList.map((b) => (
+                  {bankOptions.map((b) => (
                     <option key={b.id} value={b.id}>
-                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                      {b.label}
                     </option>
                   ))}
                 </select>
               </th>
 
-              {/* Search Desc */}
-              <th className="w-56">
+              {/* Desc search */}
+              <th>
                 <input
                   placeholder="Search desc"
-                  value={fDesc}
-                  onChange={(e) => setFDesc(e.target.value)}
-                  className="border rounded px-2 py-1 w-full"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyFilters();
+                  }}
+                  className="w-full border rounded px-2 py-1"
                 />
               </th>
 
-              <th colSpan={4} className="text-left">
+              {/* Amount + Start + Finish + Creator: kosong */}
+              <th></th>
+              <th>
                 <button
-                  onClick={() => apply(true)}
+                  onClick={applyFilters}
                   className="rounded bg-blue-600 text-white px-3 py-1"
                 >
                   Submit
                 </button>
               </th>
+              <th></th>
             </tr>
 
-            {/* HEADER */}
+            {/* ===== HEADER (urutan final) ===== */}
             <tr>
-              <th className="text-left w-16">ID</th>
-              <th className="text-left w-44">Waktu Click</th>
-              <th className="text-left w-44">Waktu Dipilih</th>
-              <th className="text-left w-28">Cat</th>
-              <th className="text-left min-w-[320px]">Bank</th>
-              <th className="text-left min-w-[220px]">Desc</th>
+              <th className="text-left w-20">ID</th>
+              <th className="text-left w-56">Waktu Click</th>
+              <th className="text-left w-56">Waktu Dipilih</th>
+              <th className="text-left w-36">Cat</th>
+              <th className="text-left w-[260px]">Bank</th>
+              <th className="text-left">Desc</th>
               <th className="text-left w-36">Amount</th>
-              <th className="text-left w-36">Start</th>
-              <th className="text-left w-36">Finish</th>
-              <th className="text-left w-28">Creator</th>
+              <th className="text-left w-40">Start</th>
+              <th className="text-left w-40">Finish</th>
+              <th className="text-left w-40">Creator</th>
             </tr>
           </thead>
 
@@ -631,33 +675,52 @@ export default function BankMutationsTable() {
                 <td colSpan={10}>No data</td>
               </tr>
             ) : (
-              rows.map((r, i) => {
-                const dispId = rows.length - i; // nomor urut (terbaru paling besar)
+              rows.map((r) => {
+                // filter in-memory setelah join
+                if (fCat && r.cat !== fCat) return null;
+                if (fBankId !== "ALL" && r.bank_id !== fBankId) return null;
+
                 return (
-                  <tr key={`${r.tsClick}-${i}`} className="align-top">
-                    <td>{dispId}</td>
-                    <td>{fmtDateJak(r.tsClick)}</td>
-                    <td>
-                      <div className="whitespace-pre-line">
-                        {fmtDateJak(r.tsPickTop)}
-                        {r.tsPickBottom ? "\n" + fmtDateJak(r.tsPickBottom) : ""}
+                  <tr key={String(r.id)} className="align-top hover:bg-gray-50">
+                    <td>{String(r.id).replace(/^(DP|WD|PDP|ADJ|EXP|TT)-/,"")}</td>
+
+                    {/* Waktu Click */}
+                    <td className="whitespace-pre">
+                      <div>{fmtDateJak(r.tsClickTop)}</div>
+                      <div className="text-gray-500 text-xs">
+                        {r.tsClickBottom ? fmtDateJak(r.tsClickBottom) : ""}
                       </div>
                     </td>
-                    <td>{r.cat}</td>
-                    <td className="whitespace-normal break-words">
-                      <div className="font-semibold">{r.bankTop}</div>
-                      {r.bankSub && (
-                        <>
-                          <div className="border-t my-1" />
-                          <div>{r.bankSub}</div>
-                        </>
-                      )}
+
+                    {/* Waktu Dipilih */}
+                    <td className="whitespace-pre">
+                      <div>{fmtDateJak(r.tsPickTop)}</div>
+                      <div className="text-gray-500 text-xs">
+                        {r.tsPickBottom ? fmtDateJak(r.tsPickBottom) : ""}
+                      </div>
                     </td>
-                    <td className="whitespace-normal break-words">{r.desc ?? "—"}</td>
+
+                    <td>{r.cat}</td>
+
+                    {/* Bank + garis pemisah + desc unik */}
+                    <td className="whitespace-normal break-words">
+                      <div className="font-semibold">{r.bankLabel}</div>
+                      <div className="border-t my-1"></div>
+                      <div className="text-sm">{r.bankDesc}</div>
+                    </td>
+
+                    <td className="whitespace-normal break-words">
+                      {/* kolom Desc terpisah (untuk Expense/Adjustment dsb) */}
+                      {/* (Saat ini sebagian kategori sudah masukkan desc unik di kolom Bank) */}
+                    </td>
+
                     <td>{formatAmount(r.amount)}</td>
-                    <td>{r.start == null ? "—" : formatAmount(r.start)}</td>
-                    <td>{r.finish == null ? "—" : formatAmount(r.finish)}</td>
-                    <td>{r.by ?? "-"}</td>
+
+                    {/* Start / Finish (pakai balance_before/after kalau ada) */}
+                    <td>{r.start != null ? formatAmount(r.start) : "—"}</td>
+                    <td>{r.finish != null ? formatAmount(r.finish) : "—"}</td>
+
+                    <td>{r.byName}</td>
                   </tr>
                 );
               })
