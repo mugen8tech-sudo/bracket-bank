@@ -187,7 +187,7 @@ export default function LeadsTable() {
         .from("leads")
         .select("id", { count: "exact", head: true })
         .eq("tenant_id", tenantId)
-        .eq("username", Username);
+        .eq("username", userName);
       if (!isCreate) q = q.neq("id", editing!.id);
       const { count, error } = await q;
       if (error) { alert(error.message); return; }
