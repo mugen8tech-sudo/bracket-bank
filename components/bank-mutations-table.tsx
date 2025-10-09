@@ -143,10 +143,16 @@ export default function BankMutationsTable() {
               <th className="w-20"></th> {/* ID */}
               <th>
                 {/* ALL BANK */}
-                <select value={fBankId ?? ''} onChange={(e)=>setFBankId(Number(e.target.value)||'')} className="border rounded px-2 py-1 w-full">
-                  <option value="">ALL BANK</option>
-                  {bankOptions.map(b => (
-                    <option key={b.id} value={b.id}>[{b.bank_code}] {b.account_name} - {b.account_no}</option>
+                <select
+                  value={fBankId === "ALL" ? "ALL" : String(fBankId)}
+                  onChange={(e)=> setFBankId(e.target.value==="ALL" ? "ALL" : Number(e.target.value))}
+                  className="border rounded px-2 py-1 w-full"
+                >
+                  <option value="ALL">ALL BANK</option>
+                  {banks.map(b=>(
+                    <option key={b.id} value={b.id}>
+                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                    </option>
                   ))}
                 </select>
               </th>
