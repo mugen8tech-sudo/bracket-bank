@@ -181,6 +181,21 @@ export default function LeadsTable() {
     // --- Cek duplikat per tenant (RLS membatasi otomatis, tapi kita tambahkan tenant_id biar eksplisit) ---
     const tenantId = prof.tenant_id as string;
     const isCreate = !editing;
+    // Cek username
+    {
+      let q = supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("username", username);
+      if (!isCreate) q = q.neq("id", editing!.id);
+      const { count, error } = await q;
+      if (error) { alert(error.message); return; }
+      if ((count ?? 0) > 0) {
+        alert("Username sudah terdaftar.");
+        return;
+      }
+    }
     // Cek bank_no
     {
       let q = supabase
