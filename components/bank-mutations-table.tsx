@@ -348,30 +348,6 @@ export default function BankMutationsTable() {
       });
     }
 
-    // Depo dari PDP (assign)
-    for (const r of pdpResp) {
-      if (!r.is_assigned || !r.assigned_at) continue; // hanya yang sudah assign
-      if (fCat && fCat !== "Depo") continue;
-      // filter waktu klik khusus rute ini pakai assigned_at (di luar query awal)
-      if (hasStart && r.assigned_at < sISO!) continue;
-      if (hasFinish && r.assigned_at > eISO!) continue;
-
-      const uname = r.assigned_username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
-      result.push({
-        tsClick: r.assigned_at,
-        tsPickTop: r.txn_at_final,
-        cat: "Depo",
-        bankTop: labelBank(r.bank_id),
-        bankSub: `Depo dari ${uname} / ${bname}`,
-        desc: "—",
-        amount: +Number(r.amount_net || 0),
-        start: r.balance_before ?? null,
-        finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
-      });
-    }
-
     // Pending DP (tetap ada, tidak dihapus meski sudah assign)
     for (const r of pdpResp) {
       if (fCat && fCat !== "Pending DP") continue;
