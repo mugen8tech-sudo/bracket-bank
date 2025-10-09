@@ -104,6 +104,8 @@ type ExpenseRow = {
   balance_after?: number | null;
 };
 
+const PAGE_SIZE = 25;
+
 type LeadSlim = { username: string | null; bank_name: string | null };
 
 /* =========================
@@ -671,6 +673,43 @@ export default function BankMutationsTable() {
             )}
           </tbody>
         </table>
+      </div>
+       
+      {/* Pagination */}
+      <div className="flex justify-center">
+        <nav className="inline-flex items-center gap-1 text-sm select-none">
+          <button
+            onClick={() => { if (page > 1) setPage(1); }}
+            disabled={page <= 1}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            First
+          </button>
+          <button
+            onClick={() => { if (page > 1) setPage(page - 1); }}
+            disabled={page <= 1}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="px-3 py-1 rounded border bg-white">
+            Page {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => { if (page < totalPages) setPage(page + 1); }}
+            disabled={page >= totalPages}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => { if (page < totalPages) setPage(totalPages); }}
+            disabled={page >= totalPages}
+            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
+          >
+            Last
+          </button>
+        </nav>
       </div>
     </div>
   );
