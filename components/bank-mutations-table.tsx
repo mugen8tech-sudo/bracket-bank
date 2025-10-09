@@ -104,8 +104,6 @@ type ExpenseRow = {
   balance_after?: number | null;
 };
 
-const PAGE_SIZE = 25;
-
 type LeadSlim = { username: string | null; bank_name: string | null };
 
 /* =========================
@@ -168,10 +166,6 @@ export default function BankMutationsTable() {
   const [fCat, setFCat] = useState<"" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense">("");
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
-
-  // pagination
-  const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
   // who map
   const [whoMap, setWhoMap] = useState<Record<string, string>>({});
