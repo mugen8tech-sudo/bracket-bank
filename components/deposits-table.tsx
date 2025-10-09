@@ -22,7 +22,7 @@ type DepositRow = {
 
 type ProfileLite = { user_id: string; full_name: string | null };
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
 
 function startOfDayJakartaISO(d: string) {
   return new Date(`${d}T00:00:00+07:00`).toISOString();
