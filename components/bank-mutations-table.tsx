@@ -23,7 +23,7 @@ type BMRow = {
 type BankLite = { id:number; bank_code:string; account_name:string; account_no:string };
 type ProfileLite = { user_id: string; full_name: string | null };
 
-const PAGE_SIZE = 25; // sesuai tabel besar lain
+const PAGE_SIZE = 100; // sesuai tabel besar lain
 
 const startIsoJakarta = (d:string)=> new Date(`${d}T00:00:00+07:00`).toISOString();
 const endIsoJakarta   = (d:string)=> new Date(`${d}T23:59:59.999+07:00`).toISOString();
@@ -188,12 +188,12 @@ export default function BankMutationsTable() {
             {/* === HEADER ROW === */}
             <tr>
               <th className="text-left w-28">ID</th>
-              <th className="text-left w-52">Waktu Click</th>
-              <th className="text-left w-52">Waktu Dipilih</th>
-              <th className="text-left w-44">Cat</th>
               <th className="text-left">Bank</th>
+              <th className="text-left w-44">Cat</th>
               <th className="text-left">Desc</th>
               <th className="text-left w-40">Amount</th>
+              <th className="text-left w-52">Waktu Click</th>
+              <th className="text-left w-52">Waktu Dipilih</th>
               <th className="text-left w-40">Start</th>
               <th className="text-left w-40">Finish</th>
               <th className="text-left w-32">Creator</th>
@@ -211,6 +211,22 @@ export default function BankMutationsTable() {
                   {/* ID (sementara pakai prefiks jenis + id sumber agar unik & stabil) */}
                   <td className="whitespace-nowrap">{r.display_id}</td>
 
+                  {/* Bank + garis + note unik */}
+                  <td className="whitespace-normal break-words">
+                    <div className="font-semibold">{bankLabel(r.bank_id)}</div>
+                    <div className="border-t my-1" />
+                    <div className="text-sm">{renderBankNote(r)}</div>
+                  </td>
+
+                  {/* Category */}
+                  <td>{r.category}</td>
+
+                  {/* Desc (Description asli) */}
+                  <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
+
+                  {/* Amount (sudah bertanda, format rata kiri meniru DP/WD) */}
+                  <td className="text-left">{formatAmount(r.amount)}</td>
+
                   {/* Waktu Click */}
                   <td>
                     {new Date(r.waktu_click).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
@@ -219,23 +235,6 @@ export default function BankMutationsTable() {
                   {/* Waktu Dipilih: 1 baris (umum) atau 2 baris (TT) */}
                   <td>
                     <div>
-
-                  {/* Category */}
-                  <td>{r.category}</td>
-
-                  {/* Bank + garis + note unik */}
-                  <td className="whitespace-normal break-words">
-                    <div className="font-semibold">{bankLabel(r.bank_id)}</div>
-                    <div className="border-t my-1" />
-                    <div className="text-sm">{renderBankNote(r)}</div>
-                  </td>
-
-                  {/* Desc (Description asli) */}
-                  <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
-
-                  {/* Amount (sudah bertanda, format rata kiri meniru DP/WD) */}
-                  <td className="text-left">{formatAmount(r.amount)}</td>
-
                       {r.final_1 ? new Date(r.final_1).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "-"}
                     </div>
                     {r.final_2 && (
