@@ -159,7 +159,7 @@ export default function BankMutationsTable() {
   // filters (sesuai versi yang sudah cocok sebelumnya)
   const [fClickStart, setFClickStart] = useState("");
   const [fClickFinish, setFClickFinish] = useState("");
-  const [fCat, setFCat] = useState<"" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense">("");
+  const [fCat, setFCat] = useState<"" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense" | "Biaya Transaksi">("");
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
 
@@ -203,14 +203,32 @@ export default function BankMutationsTable() {
       expResp,
     ] = await Promise.all([
       (async () => {
+        // === Deposits (DP) ===
         let q = supabase
           .from("deposits")
-          .select(
-            "id, bank_id, amount_net, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
-          );
+          .select(`
+            id, bank_id,
+            amount_net,
+            username_snapshot,
+            /* NEW: kolom untuk guard */
+            lead_bank_snapshot,
+            lead_accno_snapshot,
+            txn_at_opened, txn_at_final,
+            created_by,
+            balance_before, balance_after
+          `);
+
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        if (hasStart) q = q.gte("txn_at_opened", sISO!);
-        if (hasFinish) q = q.lte("txn_at_opened", eISO!);
+        if (hasStart)     q = q.gte("txn_at_opened", sISO);
+        if (hasFinish)    q = q.lte("txn_at_opened", eISO);
+
+        /* NEW GUARD:
+           DP yang tidak punya snapshot bank & accno (hasil Assign PDP langsung)
+           diabaikan supaya tidak dobel di BM. */
+        q = q
+          .not("lead_bank_snapshot", "is", null)
+          .not("lead_accno_snapshot", "is", null);
+
         const { data, error } = await q;
         if (error) console.error(error);
         return (data as DepositRow[]) ?? [];
