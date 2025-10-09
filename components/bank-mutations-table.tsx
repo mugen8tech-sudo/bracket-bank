@@ -34,7 +34,7 @@ type BMRow = {
   lead_name?: string | null;
 };
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 25;
 
 export default function BankMutationsTable() {
   const supabase = supabaseBrowser();
