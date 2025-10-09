@@ -523,15 +523,9 @@ export default function BankMutationsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const displayNumber = (idxOnPage: number) =>
-    pageRows.length - idxOnPage; // 9..1 di halaman (sesuai contohmu)
-
   /* =========================
      R E N D E R
      ========================= */
-  const canPrev = page > 1;
-  const canNext = page < totalPages;
 
   return (
     <div className="space-y-3">
@@ -685,43 +679,6 @@ export default function BankMutationsTable() {
             )}
           </tbody>
         </table>
-      </div>
-       
-      {/* Pagination */}
-      <div className="flex justify-center">
-        <nav className="inline-flex items-center gap-1 text-sm select-none">
-          <button
-            onClick={() => { if (page > 1) setPage(1); }}
-            disabled={page <= 1}
-            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
-          >
-            First
-          </button>
-          <button
-            onClick={() => { if (page > 1) setPage(page - 1); }}
-            disabled={page <= 1}
-            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <span className="px-3 py-1 rounded border bg-white">
-            Page {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => { if (page < totalPages) setPage(page + 1); }}
-            disabled={page >= totalPages}
-            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
-          >
-            Next
-          </button>
-          <button
-            onClick={() => { if (page < totalPages) setPage(totalPages); }}
-            disabled={page >= totalPages}
-            className="px-3 py-1 rounded border bg-white disabled:opacity-50"
-          >
-            Last
-          </button>
-        </nav>
       </div>
     </div>
   );
