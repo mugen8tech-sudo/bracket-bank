@@ -32,6 +32,7 @@ type BMRow = {
   // untuk keterangan player
   username?: string | null;
   lead_name?: string | null;
+  lead_bank_name?: string | null;  // ⬅️ NEW: bank_name player (DP/WD & PDP-assigned route)
 };
 
 const PAGE_SIZE = 25;
@@ -83,7 +84,7 @@ export default function BankMutationsTable() {
 
     // Deposits
     const dpSel =
-      "id, bank_id, amount_net, description, txn_at_final, txn_at_opened, created_by, username_snapshot, lead_name_snapshot";
+      "id, bank_id, lead_id, amount_net, description, txn_at_final, txn_at_opened, created_by, username_snapshot, lead_name_snapshot";
     let qDP = supabase.from("deposits").select(dpSel);
     if (start) qDP = qDP.gte("txn_at_opened", start);
     if (finish) qDP = qDP.lte("txn_at_opened", finish);
@@ -91,7 +92,7 @@ export default function BankMutationsTable() {
 
     // Withdrawals
     const wdSel =
-      "id, bank_id, amount_gross, transfer_fee_amount, description, txn_at_final, txn_at_opened, created_by, username_snapshot, lead_name_snapshot";
+      "id, bank_id, lead_id, amount_gross, transfer_fee_amount, description, txn_at_final, txn_at_opened, created_by, username_snapshot, lead_name_snapshot";
     let qWD = supabase.from("withdrawals").select(wdSel);
     if (start) qWD = qWD.gte("txn_at_opened", start);
     if (finish) qWD = qWD.lte("txn_at_opened", finish);
@@ -99,7 +100,7 @@ export default function BankMutationsTable() {
 
     // Pending Deposits
     const pdpSel =
-      "id, bank_id, amount_net, description, txn_at_final, txn_at_opened, created_by, assigned_username_snapshot";
+      "id, bank_id, amount_net, description, txn_at_final, txn_at_opened, created_by, is_assigned, assigned_at, assigned_username_snapshot";
     let qPDP = supabase.from("pending_deposits").select(pdpSel);
     if (start) qPDP = qPDP.gte("txn_at_opened", start);
     if (finish) qPDP = qPDP.lte("txn_at_opened", finish);
@@ -129,6 +130,37 @@ export default function BankMutationsTable() {
     if (finish) qTT = qTT.lte("created_at", finish);
     const { data: tt } = await qTT;
 
+    // ----- build lead bank_name map (for DP/WD + PDP-assign path) -----
+    let leadBankById: Record<number, string> = {};
+    let bankByUsername: Record<string, string> = {};
+
+    const leadIds: number[] = Array.from(new Set((dp ?? []).map((r: any) => r.lead_id).filter((x: any) => Number.isFinite(x))));
+    const userFromPDP: string[] = Array.from(new Set((pdp ?? []).map((r: any) => r.assigned_username_snapshot).filter(Boolean)));
+
+    if (leadIds.length) {
+      const { data: leadsById } = await supabase
+        .from("leads")
+        .select("id, bank_name")
+        .in("id", leadIds);
+      (leadsById as any[] | null)?.forEach((l) => {
+        if (l && typeof l.id === "number") {
+          leadBankById[l.id] = l.bank_name ?? "";
+        }
+      });
+    }
+
+    if (userFromPDP.length) {
+      const { data: leadsByUser } = await supabase
+        .from("leads")
+        .select("username, bank_name")
+        .in("username", userFromPDP);
+      (leadsByUser as any[] | null)?.forEach((l) => {
+        if (l && l.username) {
+          bankByUsername[l.username] = l.bank_name ?? "";
+        }
+      });
+    }
+
     // ============ compose ke BMRow ============
     const list: BMRow[] = [];
 
@@ -144,6 +176,7 @@ export default function BankMutationsTable() {
         by: r.created_by ?? null,
         username: r.username_snapshot ?? null,
         lead_name: r.lead_name_snapshot ?? null,
+        lead_bank_name: (leadBankById[r.lead_id] ?? bankByUsername[r.username_snapshot ?? ""]) || null,
       })
     );
 
@@ -160,6 +193,7 @@ export default function BankMutationsTable() {
         by: r.created_by ?? null,
         username: r.username_snapshot ?? null,
         lead_name: r.lead_name_snapshot ?? null,
+        lead_bank_name: (leadBankById[r.lead_id] ?? bankByUsername[r.username_snapshot ?? ""]) || null,
       })
     );
 
@@ -177,6 +211,25 @@ export default function BankMutationsTable() {
         lead_name: null,
       })
     );
+
+    // Tambahan rute: DP dari Pending Deposits (assigned) — Waktu Click = assigned_at, Waktu Dipilih = txn_at_final
+    (pdp ?? []).forEach((r: any) => {
+      if (r.is_assigned && r.assigned_at) {
+        list.push({
+          _rowKey: `pdp-as-dp-${r.id}`,
+          clickAt: r.assigned_at,
+          pickedAtList: [r.txn_at_final],
+          cat: "Depo",
+          bankId: r.bank_id,
+          amount: Number(r.amount_net ?? 0),
+          desc: r.description ?? null,
+          by: r.created_by ?? null,
+          username: r.assigned_username_snapshot ?? null,
+          lead_name: null,
+          lead_bank_name: r.assigned_username_snapshot ? (bankByUsername[r.assigned_username_snapshot] ?? null) : null,
+        });
+      }
+    });
 
     (adj ?? []).forEach((r: any) =>
       list.push({
@@ -254,35 +307,25 @@ export default function BankMutationsTable() {
     setByMap(who);
     setLoading(false);
 
-    // terapkan filter Cat/Bank/Desc di client (biar ringan)
-    setPage(1);
-    setRows(
-      list.filter((r) => {
-        if (fCat && r.cat !== fCat) return false;
-        if (fBankId) {
-          // untuk TT, match bila asal/tujuan salah satu sama
-          const matchBank =
-            r.bankId === fBankId || r.bankFromId === fBankId || r.bankToId === fBankId;
-          if (!matchBank) return false;
-        }
-        if (fDesc.trim()) {
-          const d = (r.desc ?? "").toLowerCase();
-          if (!d.includes(fDesc.trim().toLowerCase())) return false;
-        }
-        return true;
-      })
-    );
+    // apply filters (cat/bank/desc) ke list yang sudah compose
+    const f = (list as BMRow[]).filter((r) => {
+      if (fCat && r.cat !== fCat) return false;
+      if (fBankId && r.bankId !== fBankId) return false;
+      if (fDesc && !(r.desc || "").toLowerCase().includes(fDesc.toLowerCase())) return false;
+      return true;
+    });
+
+    setRows(f);
   };
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // pertama kali
-
-  const apply = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  }, []);
+  useEffect(() => {
     load();
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fStart, fFinish, fCat, fBankId, fDesc]);
 
   /** ===== Render ===== */
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -295,22 +338,24 @@ export default function BankMutationsTable() {
     // keterangan unik per kategori
     switch (r.cat) {
       case "Depo": {
-        const who = r.username || r.lead_name || "-";
+        const u = r.username || "-";
+        const bn = r.lead_bank_name || (r.lead_name ?? null);
         return (
           <div className="whitespace-normal break-words">
             <div className="font-semibold">{top}</div>
             {sep}
-            <div>Depo dari {who}</div>
+            <div>Depo dari {u}{bn ? <> / {bn}</> : null}</div>
           </div>
         );
       }
       case "WD": {
-        const who = r.username || r.lead_name || "-";
+        const u = r.username || "-";
+        const bn = r.lead_bank_name || (r.lead_name ?? null);
         return (
           <div className="whitespace-normal break-words">
             <div className="font-semibold">{top}</div>
             {sep}
-            <div>WD dari {who}</div>
+            <div>WD dari {u}{bn ? <> / {bn}</> : null}</div>
           </div>
         );
       }
@@ -374,15 +419,19 @@ export default function BankMutationsTable() {
               <th className="w-16">
                 <button
                   className="border rounded px-2 py-1 text-xs"
-                  onClick={() => load()}
-                  title="Cari ID (refresh data)"
+                  title="Urut ulang dari tanggal (terlama→terbaru)"
+                  onClick={() => {
+                    const sorted = [...rows].sort((a, b) => (a.clickAt < b.clickAt ? -1 : 1));
+                    setRows(sorted);
+                    setPage(1);
+                  }}
                 >
-                  Cari ID
+                  Sort Oldest
                 </button>
               </th>
 
-              {/* Waktu Click: from / to */}
-              <th className="w-44">
+              {/* Waktu Click (dua input untuk range filter) */}
+              <th className="w-[220px]">
                 <div className="flex flex-col gap-1">
                   <input
                     type="date"
@@ -399,39 +448,36 @@ export default function BankMutationsTable() {
                 </div>
               </th>
 
-              {/* Waktu Dipilih: tidak ada filter */}
-              <th className="w-44"></th>
+              {/* Waktu Dipilih (dikunci lebar, tidak ada filter) */}
+              <th className="w-[160px]"></th>
 
-              {/* Cat */}
-              <th className="w-32">
+              {/* Cat filter */}
+              <th className="w-[140px]">
                 <select
                   value={fCat}
                   onChange={(e) => setFCat((e.target.value || "") as any)}
                   className="border rounded px-2 py-1 w-full"
                 >
-                  <option value="">ALL</option>
-                  <option value="Depo">Depo</option>
+                  <option value="">All</option>
+                  <option value="Expense">Expense</option>
                   <option value="WD">WD</option>
+                  <option value="Depo">Depo</option>
                   <option value="Pending DP">Pending DP</option>
                   <option value="Sesama CM">Sesama CM</option>
                   <option value="Adjustment">Adjustment</option>
-                  <option value="Expense">Expense</option>
                 </select>
               </th>
 
-              {/* Bank */}
-              <th className="w-[300px]">
+              {/* Bank filter */}
+              <th className="w-[260px]">
                 <select
-                  value={String(fBankId)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFBankId(v === "" ? "" : Number(v));
-                  }}
+                  value={fBankId as any}
+                  onChange={(e) => setFBankId(e.target.value ? Number(e.target.value) : "")}
                   className="border rounded px-2 py-1 w-full"
                 >
                   <option value="">ALL BANK</option>
                   {banks.map((b) => (
-                    <option key={b.id} value={String(b.id)}>
+                    <option key={b.id} value={b.id}>
                       [{b.bank_code}] {b.account_name} - {b.account_no}
                     </option>
                   ))}
@@ -458,7 +504,7 @@ export default function BankMutationsTable() {
               {/* Creator + Submit button */}
               <th className="w-32">
                 <button
-                  onClick={apply}
+                  onClick={load}
                   className="rounded bg-blue-600 text-white px-3 py-1"
                 >
                   Submit
@@ -469,10 +515,10 @@ export default function BankMutationsTable() {
             {/* ===== Header row sesuai urutan yang kamu minta ===== */}
             <tr>
               <th className="text-left w-16">ID</th>
-              <th className="text-left w-44">Waktu Click</th>
-              <th className="text-left w-44">Waktu Dipilih</th>
-              <th className="text-left w-28">Cat</th>
-              <th className="text-left">Bank</th>
+              <th className="text-left w-[220px]">Waktu Click</th>
+              <th className="text-left w-[160px]">Waktu Dipilih</th>
+              <th className="text-left w-[140px]">Cat</th>
+              <th className="text-left w-[260px]">Bank</th>
               <th className="text-left">Desc</th>
               <th className="text-left w-40">Amount</th>
               <th className="text-left w-20">Start</th>
@@ -483,55 +529,70 @@ export default function BankMutationsTable() {
 
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={10}>Loading…</td>
-              </tr>
+              <tr><td colSpan={10}>Loading…</td></tr>
             ) : pageRows.length === 0 ? (
-              <tr>
-                <td colSpan={10}>No data</td>
-              </tr>
+              <tr><td colSpan={10}>No data</td></tr>
             ) : (
-              pageRows.map((r, idx) => (
-                <tr key={r._rowKey} className="align-top">
-                  <td>{displayNumber(idx)}</td>
-                  <td className="whitespace-pre-line">{fmtDT(r.clickAt)}</td>
-                  <td className="whitespace-pre-line">
-                    {r.pickedAtList.filter(Boolean).map((p, i) => (
-                      <div key={i}>{fmtDT(p)}</div>
-                    ))}
-                  </td>
-                  <td>{r.cat}</td>
-                  <td>{bankCell(r)}</td>
-                  <td>
-                    <div className="whitespace-normal break-words">
-                      {r.desc ?? "—"}
-                    </div>
-                  </td>
-                  <td>{formatAmount(r.amount)}</td>
-                  {/* Running balance belum dihitung — kita isi placeholder dulu */}
-                  <td>—</td>
-                  <td>—</td>
-                  <td>{r.by ? byMap[r.by] ?? r.by.slice(0, 8) : "—"}</td>
-                </tr>
-              ))
+              pageRows.map((r, idxOnPage) => {
+                const idx = displayNumber(idxOnPage); // 1..n dalam halaman (yang atas = paling besar)
+                return (
+                  <tr key={r._rowKey} className="align-top">
+                    {/* ID (nomor urut dalam halaman) */}
+                    <td>{idx}</td>
+
+                    {/* Waktu Click */}
+                    <td className="whitespace-normal break-words">
+                      {fmtDT(r.clickAt)}
+                    </td>
+
+                    {/* Waktu Dipilih (bisa 2 baris untuk TT) */}
+                    <td className="whitespace-normal break-words">
+                      <div className="space-y-1">
+                        {r.pickedAtList.map((t, i) => (
+                          <div key={i}>{fmtDT(t)}</div>
+                        ))}
+                      </div>
+                    </td>
+
+                    {/* Cat */}
+                    <td>{r.cat}</td>
+
+                    {/* Bank (berisi juga keterangan khusus per kategori) */}
+                    <td>{bankCell(r)}</td>
+
+                    {/* Desc */}
+                    <td className="whitespace-normal break-words">{r.desc ?? ""}</td>
+
+                    {/* Amount */}
+                    <td className="text-left">{formatAmount(r.amount)}</td>
+
+                    {/* Start / Finish: kosong dulu sesuai kesepakatan, nanti diisi running balance */}
+                    <td>—</td>
+                    <td>—</td>
+
+                    {/* Creator */}
+                    <td>{r.by ? byMap[r.by] ?? r.by.slice(0, 8) : "-"}</td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {/* pagination */}
+      {/* Pagination */}
       <div className="flex justify-center">
         <nav className="inline-flex items-center gap-1 text-sm select-none">
           <button
-            onClick={() => canPrev && setPage(1)}
-            disabled={!canPrev}
+            onClick={() => { if (page > 1) setPage(1); }}
+            disabled={page <= 1}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             First
           </button>
           <button
-            onClick={() => canPrev && setPage((p) => p - 1)}
-            disabled={!canPrev}
+            onClick={() => { if (page > 1) setPage(page - 1); }}
+            disabled={page <= 1}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Previous
@@ -540,15 +601,15 @@ export default function BankMutationsTable() {
             Page {page} / {totalPages}
           </span>
           <button
-            onClick={() => canNext && setPage((p) => p + 1)}
-            disabled={!canNext}
+            onClick={() => { if (page < totalPages) setPage(page + 1); }}
+            disabled={page >= totalPages}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Next
           </button>
           <button
-            onClick={() => canNext && setPage(totalPages)}
-            disabled={!canNext}
+            onClick={() => { if (page < totalPages) setPage(totalPages); }}
+            disabled={page >= totalPages}
             className="px-3 py-1 rounded border bg-white disabled:opacity-50"
           >
             Last
