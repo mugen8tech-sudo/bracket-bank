@@ -332,7 +332,7 @@ export default function BankMutationsTable() {
             <div className="font-semibold">{top}</div>
             {sep}
             <div>
-              Transfer dari <b>{from}</b> ke <b>{to}</b>
+              Transfer dari {from} ke {to}
             </div>
           </div>
         );
