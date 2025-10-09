@@ -4,265 +4,593 @@ import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 
-type BMRow = {
-  display_id: string;
-  tenant_id: string;
-  category: "Expense" | "Biaya Transaksi" | "Sesama CM" | "Depo" | "WD" | "Pending DP" | "Adjustment";
-  bank_id: number;
-  amount: number;              // sudah bertanda (+/-) = NET effect
-  waktu_click: string;         // untuk sort & kolom "Waktu Click"
-  final_1: string | null;      // untuk kolom "Waktu Dipilih" (baris atas)
-  final_2: string | null;      // untuk TT (baris bawah)
-  description: string | null;  // kolom Desc
-  bank_note: string | null;    // subteks di bawah label Bank
-  from_bank_id: number | null; // khusus TT
-  to_bank_id: number | null;   // khusus TT
-  created_by: string | null;
-};
+/** ===== Helpers (Asia/Jakarta) ===== */
+const startIsoJakarta = (d: string) =>
+  new Date(`${d}T00:00:00+07:00`).toISOString();
+const endIsoJakarta = (d: string) =>
+  new Date(`${d}T23:59:59.999+07:00`).toISOString();
 
-type BankLite = { id:number; bank_code:string; account_name:string; account_no:string };
+/** ====== Master types (subset kolom yang kita pakai) ====== */
+type BankLite = { id: number; bank_code: string; account_name: string; account_no: string };
 type ProfileLite = { user_id: string; full_name: string | null };
 
-const PAGE_SIZE = 100; // sesuai tabel besar lain
+/** ====== Sumber data ====== */
+type Deposit = {
+  id: number; bank_id: number; amount_net: number;
+  txn_at_opened: string | null; txn_at_final: string;
+  username_snapshot: string | null; lead_name_snapshot: string | null;
+  description: string | null; created_by: string | null;
+};
+type Withdrawal = {
+  id: number; bank_id: number; amount_gross: number; transfer_fee_amount: number;
+  txn_at_opened: string | null; txn_at_final: string;
+  username_snapshot: string | null; description: string | null; created_by: string | null;
+};
+type PendingDeposit = {
+  id: number; bank_id: number; amount_net: number;
+  txn_at_opened: string | null; txn_at_final: string;
+  description: string | null; created_by: string | null;
+};
+type Adjustment = {
+  id: number; bank_id: number; amount_delta: number;
+  txn_at_final: string; description: string | null; created_at: string; created_by: string | null;
+};
+type Expense = {
+  id: number; bank_id: number; amount: number;
+  category_code: string | null; description: string | null;
+  txn_at_final: string; created_at: string; created_by: string | null;
+};
+type TT = {
+  id: number; bank_from_id: number; bank_to_id: number;
+  amount_gross: number; fee_amount: number;
+  from_txn_at: string; to_txn_at: string;
+  created_at: string; created_by: string | null; description: string | null;
+};
 
-const startIsoJakarta = (d:string)=> new Date(`${d}T00:00:00+07:00`).toISOString();
-const endIsoJakarta   = (d:string)=> new Date(`${d}T23:59:59.999+07:00`).toISOString();
+/** ====== Item gabungan (yang ditampilkan) ====== */
+type MutItem = {
+  key: string;               // kunci unik React, contoh: "DP-15", "TT-8-FROM"
+  sourceRef: string;         // referensi untuk filter ID (mis. "DP-15", "TT-8")
+  bank_id: number;
+  bank_label: string;
+  cat: "Expense" | "Biaya Transaksi" | "Sesama CM" | "Depo" | "WD" | "Pending DP" | "Adjustment";
+  desc: string;
+  amount: number;            // signed (+/-)
+  clickTime: string;         // untuk kolom Waktu Click
+  finalTimes: string[];      // untuk kolom Waktu Dipilih (TT: 2 baris; lainnya: 1 baris)
+  creator: string | null;    // user_id (nanti di-map ke full_name)
+};
 
-const CAT_OPTIONS = ["ALL","Expense","Biaya Transaksi","Sesama CM","Depo","WD","Pending DP","Adjustment"] as const;
-type CatOpt = typeof CAT_OPTIONS[number];
+/** ====== Kategori dropdown ====== */
+const CAT_OPTIONS = [
+  "ALL",
+  "Expense",
+  "Biaya Transaksi",
+  "Sesama CM",
+  "Depo",
+  "WD",
+  "Pending DP",
+  "Adjustment",
+] as const;
+type CatFilter = (typeof CAT_OPTIONS)[number];
 
+/** ====== Komponen ====== */
 export default function BankMutationsTable() {
   const supabase = supabaseBrowser();
 
-  // data & refs
-  const [rows, setRows] = useState<BMRow[]>([]);
+  // banks & map label
   const [banks, setBanks] = useState<BankLite[]>([]);
-  const [byMap, setByMap] = useState<Record<string,string>>({});
-  const [loading, setLoading] = useState(true);
-
-  // pagination
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // filters
-  const [fCat, setFCat] = useState<CatOpt>("ALL");
-  const [fBankId, setFBankId] = useState<number | "ALL">("ALL");
-  const [fStart, setFStart] = useState("");
-  const [fFinish, setFFinish] = useState("");
-
-  // label bank lengkap → [code] name - no
   const bankLabel = useMemo(() => {
-    const map: Record<number,string> = {};
+    const map: Record<number, string> = {};
     for (const b of banks) map[b.id] = `[${b.bank_code}] ${b.account_name} - ${b.account_no}`;
-    return (id:number)=> map[id] ?? `#${id}`;
+    return (id: number) => map[id] ?? `#${id}`;
   }, [banks]);
 
-  // render “bank_note” khusus TT (ganti placeholder FROM/TO dengan label sebenarnya)
-  const renderBankNote = (r: BMRow) => {
-    if (r.category === "Sesama CM" || r.category === "Biaya Transaksi") {
-      if (r.from_bank_id && r.to_bank_id) {
-        return `Transfer dari ${bankLabel(r.from_bank_id)} ke ${bankLabel(r.to_bank_id)}`;
-      }
-    }
-    return r.bank_note ?? "";
-  };
+  // who created map
+  const [byMap, setByMap] = useState<Record<string, string>>({});
 
-  // load data
-  const load = async (pageToLoad = page) => {
-    setLoading(true);
+  // filter states
+  const [fBankId, setFBankId] = useState<string>(""); // "" = ALL BANK
+  const [fCat, setFCat] = useState<CatFilter>("ALL");
+  const [fId, setFId] = useState<string>("");         // search ID (sourceRef)
+  const [fDesc, setFDesc] = useState<string>("");     // search Desc
+  const [fStart, setFStart] = useState<string>("");
+  const [fFinish, setFFinish] = useState<string>("");
 
-    // bank list (untuk label)
-    const { data: bankData, error: e1 } = await supabase
+  // data gabungan + paging
+  const [items, setItems] = useState<MutItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const PAGE_SIZE = 100;
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  /** ====== Load banks (untuk label) ====== */
+  const loadBanks = async () => {
+    const { data } = await supabase
       .from("banks")
       .select("id, bank_code, account_name, account_no");
-    if (e1) { setLoading(false); alert(e1.message); return; }
+    setBanks((data as BankLite[]) ?? []);
+  };
 
-    // query view union
-    const from = (pageToLoad - 1) * PAGE_SIZE;
-    const to   = from + PAGE_SIZE - 1;
+  /** ====== Load data per tabel (menggunakan filter tanggal) ====== */
+  const loadAll = async () => {
+    setLoading(true);
 
-    let q = supabase
-      .from("bank_mutations_v")
-      .select("*", { count: "exact" })
-      .order("waktu_click", { ascending: false })
-      .range(from, to);
+    // siapkan rentang waktu (dipakai di kolom Waktu Dipilih)
+    const hasRange = !!(fStart || fFinish);
+    const s = fStart ? startIsoJakarta(fStart) : undefined;
+    const e = fFinish ? endIsoJakarta(fFinish)   : undefined;
 
-    if (fCat !== "ALL") q = q.eq("category", fCat);
-    if (fBankId !== "ALL") q = q.eq("bank_id", fBankId);
-    if (fStart) q = q.gte("waktu_click", startIsoJakarta(fStart));
-    if (fFinish) q = q.lte("waktu_click", endIsoJakarta(fFinish));
+    // helper untuk apply gte/lte
+    const rangeFinal = <T,>(
+      q: any,
+      col: string
+    ): Promise<{ data: T[] | null; error: any }> => {
+      if (s) q = q.gte(col, s);
+      if (e) q = q.lte(col, e);
+      return q;
+    };
 
-    const { data, error, count } = await q;
-    if (error) { setLoading(false); alert(error.message); return; }
+    // --- query paralel (pakai kolom "final" masing-masing) ---
+    const [
+      depRes,
+      wdRes,
+      pdpRes,
+      adjRes,
+      expRes,
+      ttRes,
+    ] = await Promise.all([
+      rangeFinal<Deposit>(
+        supabase.from("deposits").select(
+          "id, bank_id, amount_net, txn_at_opened, txn_at_final, username_snapshot, lead_name_snapshot, description, created_by"
+        ).order("txn_at_final", { ascending: false }),
+        "txn_at_final"
+      ),
+      rangeFinal<Withdrawal>(
+        supabase.from("withdrawals").select(
+          "id, bank_id, amount_gross, transfer_fee_amount, txn_at_opened, txn_at_final, username_snapshot, description, created_by"
+        ).order("txn_at_final", { ascending: false }),
+        "txn_at_final"
+      ),
+      rangeFinal<PendingDeposit>(
+        supabase.from("pending_deposits").select(
+          "id, bank_id, amount_net, txn_at_opened, txn_at_final, description, created_by"
+        ).order("txn_at_final", { ascending: false }),
+        "txn_at_final"
+      ),
+      rangeFinal<Adjustment>(
+        supabase.from("bank_adjustments").select(
+          "id, bank_id, amount_delta, txn_at_final, description, created_at, created_by"
+        ).order("txn_at_final", { ascending: false }),
+        "txn_at_final"
+      ),
+      rangeFinal<Expense>(
+        supabase.from("bank_expenses").select(
+          "id, bank_id, amount, category_code, description, txn_at_final, created_at, created_by"
+        ).order("txn_at_final", { ascending: false }),
+        "txn_at_final"
+      ),
+      // TT: filter pada salah satu waktu final (from/to), plus created_at untuk click
+      (async () => {
+        let q = supabase
+          .from("interbank_transfers")
+          .select(
+            "id, bank_from_id, bank_to_id, amount_gross, fee_amount, from_txn_at, to_txn_at, created_at, created_by, description"
+          )
+          .order("created_at", { ascending: false });
+        if (hasRange) {
+          // masukkan jika salah satu waktu final berada pada rentang
+          if (s) {
+            q = q.or(`from_txn_at.gte.${s},to_txn_at.gte.${s}`);
+          }
+          if (e) {
+            q = q.or(`from_txn_at.lte.${e},to_txn_at.lte.${e}`);
+          }
+        }
+        const { data, error } = await q;
+        return { data: (data as TT[]) ?? null, error };
+      })(),
+    ]);
 
-    const list = (data as BMRow[]) ?? [];
-    setRows(list);
-    setTotal(count ?? 0);
-    setPage(pageToLoad);
-    setBanks((bankData as BankLite[]) ?? []);
+    // kumpulkan semua user_id untuk map → full_name
+    const userIds = new Set<string>();
+    [
+      depRes.data ?? [],
+      wdRes.data ?? [],
+      pdpRes.data ?? [],
+      adjRes.data ?? [],
+      expRes.data ?? [],
+      ttRes.data ?? [],
+    ].forEach((rows: any[]) =>
+      rows.forEach((r) => r.created_by && userIds.add(r.created_by))
+    );
 
-    // map created_by → full_name (pola Expenses/Adjustments)
-    const uids = Array.from(new Set(list.map(r=>r.created_by).filter(Boolean))) as string[];
-    if (uids.length) {
+    // ambil profile
+    let who: Record<string, string> = {};
+    if (userIds.size) {
       const { data: profs } = await supabase
         .from("profiles")
         .select("user_id, full_name")
-        .in("user_id", uids);
-      const map: Record<string,string> = {};
+        .in("user_id", Array.from(userIds));
       for (const p of (profs ?? []) as ProfileLite[]) {
-        map[p.user_id] = p.full_name ?? p.user_id.slice(0,8);
+        who[p.user_id] = p.full_name ?? p.user_id.slice(0, 8);
       }
-      setByMap(map);
-    } else {
-      setByMap({});
+    }
+    setByMap(who);
+
+    // map → MutItem[]
+    const list: MutItem[] = [];
+
+    // DP
+    for (const r of (depRes.data ?? [])) {
+      const whoName = r.username_snapshot || r.lead_name_snapshot || "-";
+      list.push({
+        key: `DP-${r.id}`,
+        sourceRef: `DP-${r.id}`,
+        bank_id: r.bank_id,
+        bank_label: bankLabel(r.bank_id),
+        cat: "Depo",
+        desc: `Depo dari ${whoName}`,
+        amount: Number(r.amount_net || 0), // plus
+        clickTime: r.txn_at_opened ?? r.txn_at_final,
+        finalTimes: [r.txn_at_final],
+        creator: r.created_by,
+      });
     }
 
+    // WD (gross + fee jadi 2 baris)
+    for (const r of (wdRes.data ?? [])) {
+      const whoName = r.username_snapshot || "-";
+      // WD (gross)
+      list.push({
+        key: `WD-${r.id}`,
+        sourceRef: `WD-${r.id}`,
+        bank_id: r.bank_id,
+        bank_label: bankLabel(r.bank_id),
+        cat: "WD",
+        desc: `WD dari ${whoName}`,
+        amount: -Number(r.amount_gross || 0), // minus gross
+        clickTime: r.txn_at_opened ?? r.txn_at_final,
+        finalTimes: [r.txn_at_final],
+        creator: r.created_by,
+      });
+      // Biaya Transaksi (fee)
+      const fee = Number(r.transfer_fee_amount || 0);
+      if (fee > 0) {
+        list.push({
+          key: `WD-FEE-${r.id}`,
+          sourceRef: `WD-${r.id}`,
+          bank_id: r.bank_id,
+          bank_label: bankLabel(r.bank_id),
+          cat: "Biaya Transaksi",
+          desc: `Biaya transfer WD #${r.id}`,
+          amount: -fee,
+          clickTime: r.txn_at_opened ?? r.txn_at_final,
+          finalTimes: [r.txn_at_final],
+          creator: r.created_by,
+        });
+      }
+    }
+
+    // PDP
+    for (const r of (pdpRes.data ?? [])) {
+      list.push({
+        key: `PDP-${r.id}`,
+        sourceRef: `PDP-${r.id}`,
+        bank_id: r.bank_id,
+        bank_label: bankLabel(r.bank_id),
+        cat: "Pending DP",
+        desc: "Pending Deposit",
+        amount: Number(r.amount_net || 0), // plus
+        clickTime: r.txn_at_opened ?? r.txn_at_final,
+        finalTimes: [r.txn_at_final],
+        creator: r.created_by,
+      });
+    }
+
+    // Adjustment
+    for (const r of (adjRes.data ?? [])) {
+      list.push({
+        key: `ADJ-${r.id}`,
+        sourceRef: `ADJ-${r.id}`,
+        bank_id: r.bank_id,
+        bank_label: bankLabel(r.bank_id),
+        cat: "Adjustment",
+        desc: r.description ?? "",
+        amount: Number(r.amount_delta || 0), // signed
+        clickTime: r.created_at,             // klik = created
+        finalTimes: [r.txn_at_final],
+        creator: r.created_by,
+      });
+    }
+
+    // Expense
+    for (const r of (expRes.data ?? [])) {
+      list.push({
+        key: `EXP-${r.id}`,
+        sourceRef: `EXP-${r.id}`,
+        bank_id: r.bank_id,
+        bank_label: bankLabel(r.bank_id),
+        cat: "Expense",
+        desc: r.description ?? "",
+        amount: -Math.abs(Number(r.amount || 0)), // keluar (minus)
+        clickTime: r.created_at,                   // klik = created
+        finalTimes: [r.txn_at_final],
+        creator: r.created_by,
+      });
+    }
+
+    // TT → FROM & TO (net = gross, fee baris terpisah pada FROM)
+    for (const r of (ttRes.data ?? [])) {
+      // FROM
+      list.push({
+        key: `TT-${r.id}-FROM`,
+        sourceRef: `TT-${r.id}`,
+        bank_id: r.bank_from_id,
+        bank_label: bankLabel(r.bank_from_id),
+        cat: "Sesama CM",
+        desc: `Transfer dari ${bankLabel(r.bank_from_id)} ke ${bankLabel(r.bank_to_id)}`,
+        amount: -Number(r.amount_gross || 0), // keluar (gross)
+        clickTime: r.created_at,
+        finalTimes: [r.from_txn_at, r.to_txn_at], // dua baris
+        creator: r.created_by,
+      });
+      // TO
+      list.push({
+        key: `TT-${r.id}-TO`,
+        sourceRef: `TT-${r.id}`,
+        bank_id: r.bank_to_id,
+        bank_label: bankLabel(r.bank_to_id),
+        cat: "Sesama CM",
+        desc: `Transfer dari ${bankLabel(r.bank_from_id)} ke ${bankLabel(r.bank_to_id)}`,
+        amount: Number(r.amount_gross || 0), // masuk (gross)
+        clickTime: r.created_at,
+        finalTimes: [r.from_txn_at, r.to_txn_at], // dua baris
+        creator: r.created_by,
+      });
+      // Biaya transfer pada FROM
+      const fee = Number(r.fee_amount || 0);
+      if (fee > 0) {
+        list.push({
+          key: `TT-${r.id}-FEE-FROM`,
+          sourceRef: `TT-${r.id}`,
+          bank_id: r.bank_from_id,
+          bank_label: bankLabel(r.bank_from_id),
+          cat: "Biaya Transaksi",
+          desc: `Biaya transfer TT #${r.id}`,
+          amount: -fee,
+          clickTime: r.created_at,
+          finalTimes: [r.from_txn_at],
+          creator: r.created_by,
+        });
+      }
+    }
+
+    // filter client-side: bank/cat/desc/id + range (kalau user isi range, sudah difilter query; tetap cek tambahan untuk TT/OR)
+    let all = list;
+
+    // Bank
+    if (fBankId) {
+      const idNum = Number(fBankId);
+      all = all.filter((x) => x.bank_id === idNum);
+    }
+
+    // Category
+    if (fCat !== "ALL") {
+      all = all.filter((x) => x.cat === fCat);
+    }
+
+    // ID (sourceRef)
+    if (fId.trim()) {
+      const q = fId.trim().toLowerCase();
+      all = all.filter((x) => x.sourceRef.toLowerCase().includes(q));
+    }
+
+    // Desc
+    if (fDesc.trim()) {
+      const q = fDesc.trim().toLowerCase();
+      all = all.filter((x) => x.desc.toLowerCase().includes(q));
+    }
+
+    // Range akhir (tambahan safeguard untuk TT yang kita pakai OR from/to)
+    if (hasRange) {
+      const S = s!, E = e!;
+      const inRange = (iso: string) => (!S || iso >= S) && (!E || iso <= E);
+      all = all.filter((x) => x.finalTimes.some(inRange));
+    }
+
+    // sorting: terbaru berdasarkan Waktu Click (desc)
+    all.sort((a, b) => (a.clickTime < b.clickTime ? 1 : -1));
+
+    setItems(all);
     setLoading(false);
   };
 
-  useEffect(()=>{ load(1); /* eslint-disable-next-line */ }, []);
+  const apply = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    setPage(1);
+    loadAll();
+  };
 
-  const apply = (e?:React.FormEvent)=>{ e?.preventDefault(); load(1); };
+  useEffect(() => {
+    // muat awal
+    (async () => {
+      await loadBanks();
+      await loadAll();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // pagination helpers
-  const canPrev = page > 1;
-  const canNext = page < totalPages;
-  const goFirst = ()=> canPrev && load(1);
-  const goPrev  = ()=> canPrev && load(page-1);
-  const goNext  = ()=> canNext && load(page+1);
-  const goLast  = ()=> canNext && load(totalPages);
+  // Pagination slice
+  const pageItems = useMemo(() => {
+    const from = (page - 1) * PAGE_SIZE;
+    return items.slice(from, from + PAGE_SIZE);
+  }, [items, page]);
+
+  // daftar bank utk dropdown
+  const bankOptions = useMemo(() => banks.map(b => ({
+    id: String(b.id),
+    label: `[${b.bank_code}] ${b.account_name} - ${b.account_no}`,
+  })), [banks]);
 
   return (
     <div className="space-y-3">
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
+        <table className="table-grid min-w-[1200px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* ===== FILTERS ===== */}
+            {/* ==== FILTER BARIS ATAS ==== */}
             <tr className="filters">
-              <th className="w-20"></th> {/* ID */}
+              {/* ID filter */}
+              <th className="w-20">
+                <input
+                  placeholder="Cari ID"
+                  value={fId}
+                  onChange={(e) => setFId(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && apply()}
+                  className="w-full border rounded px-2 py-1"
+                />
+              </th>
+
+              {/* Bank dropdown */}
               <th>
-                {/* ALL BANK */}
                 <select
-                  value={fBankId === "ALL" ? "ALL" : String(fBankId)}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setFBankId(v === "ALL" ? "ALL" : Number(v));
-                  }}
-                  className="border rounded px-2 py-1"
+                  value={fBankId}
+                  onChange={(e) => setFBankId(e.target.value)}
+                  className="border rounded px-2 py-1 w-full"
                 >
-                  <option value="ALL">ALL BANK</option>
+                  <option value="">ALL BANK</option>
                   {bankOptions.map((b) => (
-                    <option key={b.id} value={String(b.id)}>
-                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                    <option key={b.id} value={b.id}>
+                      {b.label}
                     </option>
                   ))}
                 </select>
               </th>
-              <th className="w-28">
-                {/* CAT */}
-                <select value={fCat ?? ''} onChange={(e)=>setFCat(e.target.value)} className="border rounded px-2 py-1 w-full">
-                  <option value="">ALL</option>
-                  <option value="Expense">Expense</option>
-                  <option value="Biaya Transfer">Biaya Transfer</option>
-                  <option value="Sesama CM">Sesama CM</option>
-                  <option value="Depo">Depo</option>
-                  <option value="WD">WD</option>
-                  <option value="Pending DP">Pending DP</option>
-                  <option value="Adjustment">Adjustment</option>
+
+              {/* Cat dropdown */}
+              <th className="w-40">
+                <select
+                  value={fCat}
+                  onChange={(e) => setFCat(e.target.value as CatFilter)}
+                  className="border rounded px-2 py-1 w-full"
+                >
+                  {CAT_OPTIONS.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
               </th>
-              <th></th> {/* Desc */}
-              <th className="w-40"></th> {/* Amount */}
 
-              {/* Waktu Dipilih (range atas–bawah) */}
-              <th className="w-40">
-                <div className="flex flex-col gap-1">
-                  <input type="date"  value={fStart}  onChange={(e)=>setFStart(e.target.value)}  className="border rounded px-2 py-1" />
-                  <input type="date"  value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
+              {/* Desc search */}
+              <th>
+                <input
+                  placeholder="Search description"
+                  value={fDesc}
+                  onChange={(e) => setFDesc(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && apply()}
+                  className="w-full border rounded px-2 py-1"
+                />
+              </th>
+
+              {/* Amount: kosong (grid penyeimbang) */}
+              <th></th>
+
+              {/* Waktu Click: kosong */}
+              <th></th>
+
+              {/* Waktu Dipilih: range + Submit */}
+              <th>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={fStart}
+                    onChange={(e) => setFStart(e.target.value)}
+                    className="border rounded px-2 py-1"
+                  />
+                  <input
+                    type="date"
+                    value={fFinish}
+                    onChange={(e) => setFFinish(e.target.value)}
+                    className="border rounded px-2 py-1"
+                  />
+                  <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">
+                    Submit
+                  </button>
                 </div>
               </th>
 
-              {/* Kolom yang tersisa untuk merapikan grid + tombol Submit di kanan */}
-              <th className="w-40"></th> {/* Waktu Click (tidak difilter di grid) */}
-              <th className="w-28"></th> {/* Start */}
-              <th className="w-28"></th> {/* Finish */}
-              <th className="w-28">
-                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1 w-full">Submit</button>
-              </th>
+              {/* Start / Finish / Creator : kosong */}
+              <th></th>
+              <th></th>
+              <th></th>
             </tr>
 
-            {/* ===== HEADERS ===== */}
+            {/* ==== HEADER ROW (match screenshot) ==== */}
             <tr>
               <th className="text-left w-20">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-28">Cat</th>
+              <th className="text-left w-40">Cat</th>
               <th className="text-left">Desc</th>
               <th className="text-left w-40">Amount</th>
-              <th className="text-left w-40">Waktu Click</th>
-              <th className="text-left w-40">Waktu Dipilih</th>
+              <th className="text-left w-52">Waktu Click</th>
+              <th className="text-left w-52">Waktu Dipilih</th>
               <th className="text-left w-28">Start</th>
               <th className="text-left w-28">Finish</th>
-              <th className="text-left w-28">Creator</th>
+              <th className="text-left w-36">Creator</th>
             </tr>
           </thead>
 
           <tbody>
-            {rows.map((r, idx) => (
-              <tr key={r.key /* pakai key unikmu */} className="hover:bg-gray-50">
-                {/* ID nomor urut 1..n (kalau ada paging, pakai rumus total) */}
-                <td>{typeof page === 'number' && typeof PAGE_SIZE === 'number'
-                      ? (page - 1) * PAGE_SIZE + idx + 1
-                      : idx + 1}</td>
-
-                {/* Bank: label lengkap + keterangan sesuai Cat (sudah ada di implementasimu) */}
-                <td className="whitespace-normal break-words">
-                  {/* contoh struktur:
-                     <div className="font-semibold">[{b.code}] {b.name} - {b.no}</div>
-                     <div className="border-t my-1"></div>
-                     <div>...keterangan unik (Transfer dari A ke B / Depo dari username / dsb.)</div>
-                  */}
-                  {renderBankCell(r)}
-                </td>
-
-                <td className="w-28">{r.category}</td>
-                <td>{r.description ?? ""}</td>
-                <td className="w-40">{formatAmount(r.amount_net ?? r.amount)}</td>
-
-                {/* Waktu Click (lihat logika yang sudah kita set: TT=created_at; lainnya=txn_at_opened) */}
-                <td className="w-40">
-                  {new Date(r.click_time_iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
-                </td>
-
-                {/* Waktu Dipilih: TT = 2 baris (from/to), lainnya = 1 baris (txn_at_final) */}
-                <td className="w-40">
-                  {r.kind === "TT" ? (
-                    <>
-                      <div>{new Date(r.from_txn_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</div>
-                      <div>{new Date(r.to_txn_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</div>
-                    </>
-                  ) : (
-                    new Date(r.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
-                  )}
-                </td>
-
-                <td className="w-28">{formatAmount(r.open_balance)}</td>
-                <td className="w-28">{formatAmount(r.close_balance)}</td>
-                <td className="w-28">{r.created_by_name ?? r.created_by?.slice(0,8) ?? "-"}</td>
-              </tr>
-            ))}
+            {loading ? (
+              <tr><td colSpan={10}>Loading…</td></tr>
+            ) : pageItems.length === 0 ? (
+              <tr><td colSpan={10}>No data</td></tr>
+            ) : (
+              pageItems.map((r, idx) => {
+                const rowNo = (page - 1) * PAGE_SIZE + idx + 1; // 1..N (bukan DP/TT…)
+                return (
+                  <tr key={r.key} className="hover:bg-gray-50">
+                    <td>{rowNo}</td>
+                    <td className="whitespace-normal break-words">
+                      {/* Format kolom Bank + pembeda sesuai cat */}
+                      <div className="font-medium">{r.bank_label}</div>
+                      <div className="border-t my-1"></div>
+                      <div className="text-sm">{r.desc}</div>
+                    </td>
+                    <td>{r.cat}</td>
+                    <td><div className="whitespace-normal break-words">{r.desc}</div></td>
+                    <td>{formatAmount(r.amount)}</td>
+                    <td>{new Date(r.clickTime).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
+                    <td>
+                      {/* satu/dwi-baris */}
+                      {r.finalTimes.map((t, i) => (
+                        <div key={i}>
+                          {new Date(t).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
+                        </div>
+                      ))}
+                    </td>
+                    {/* Start/Finish: belum dihitung ledger → placeholder “—” agar kolom terkunci rapih */}
+                    <td>—</td>
+                    <td>—</td>
+                    <td>{r.creator ? (byMap[r.creator] ?? r.creator.slice(0, 8)) : "-"}</td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* ==== Pagination (100/halaman) ==== */}
       <div className="flex justify-center">
         <nav className="inline-flex items-center gap-1 text-sm select-none">
-          <button onClick={goFirst} disabled={!canPrev} className="px-3 py-1 rounded border bg-white disabled:opacity-50">First</button>
-          <button onClick={goPrev}  disabled={!canPrev} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Previous</button>
+          <button onClick={() => canPrev && setPage(1)}        disabled={!canPrev} className="px-3 py-1 rounded border bg-white disabled:opacity-50">First</button>
+          <button onClick={() => canPrev && setPage(page - 1)} disabled={!canPrev} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Previous</button>
           <span className="px-3 py-1 rounded border bg-white">Page {page} / {totalPages}</span>
-          <button onClick={goNext}  disabled={!canNext} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Next</button>
-          <button onClick={goLast}  disabled={!canNext} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Last</button>
+          <button onClick={() => canNext && setPage(page + 1)} disabled={!canNext} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Next</button>
+          <button onClick={() => canNext && setPage(totalPages)} disabled={!canNext} className="px-3 py-1 rounded border bg-white disabled:opacity-50">Last</button>
         </nav>
       </div>
     </div>
