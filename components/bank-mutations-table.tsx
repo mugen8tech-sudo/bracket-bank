@@ -169,6 +169,10 @@ export default function BankMutationsTable() {
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
 
+  // pagination
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
   // who map
   const [whoMap, setWhoMap] = useState<Record<string, string>>({});
 
