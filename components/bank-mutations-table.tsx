@@ -22,6 +22,7 @@ type DepositRow = {
   bank_id: number;
   amount_net: number;
   username_snapshot: string;
+  bank_name: string;
   lead_bank_snapshot: string | null;     // <— baru
   lead_accno_snapshot: string | null;    // <— baru
   txn_at_opened: string; // waktu klik
@@ -36,7 +37,8 @@ type WithdrawalRow = {
   id: number;
   bank_id: number;
   amount_gross: number;
-  username_snapshot: string | null;
+  username_snapshot: string
+  bank_name: string;
   txn_at_opened: string;
   txn_at_final: string;
   created_by: string | null;
