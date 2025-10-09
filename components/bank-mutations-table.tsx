@@ -138,121 +138,119 @@ export default function BankMutationsTable() {
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* === FILTER ROW (meniru interbank; tanggal 2 input untuk "mengunci" lebar Tgl) === */}
+            {/* ===== FILTERS ===== */}
             <tr className="filters">
-              <th className="w-28"></th> {/* ID */}
-              <th className="min-w-[320px]">
-                {/* Bank filter */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={fBankId === "ALL" ? "ALL" : String(fBankId)}
-                    onChange={(e)=> setFBankId(e.target.value==="ALL" ? "ALL" : Number(e.target.value))}
-                    className="border rounded px-2 py-1 w-full"
-                  >
-                    <option value="ALL">ALL BANK</option>
-                    {banks.map(b=>(
-                      <option key={b.id} value={b.id}>
-                        [{b.bank_code}] {b.account_name} - {b.account_no}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </th>
-              <th className="w-44">
-                {/* Cat filter */}
+              <th className="w-20"></th> {/* ID */}
+              <th>
+                {/* ALL BANK */}
                 <select
-                  value={fCat}
-                  onChange={(e)=> setFCat(e.target.value as CatOpt)}
-                  className="border rounded px-2 py-1 w-full"
+                  value={fBankId === "ALL" ? "ALL" : String(fBankId)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFBankId(v === "ALL" ? "ALL" : Number(v));
+                  }}
+                  className="border rounded px-2 py-1"
                 >
-                  {CAT_OPTIONS.map(c=> <option key={c} value={c}>{c}</option>)}
+                  <option value="ALL">ALL BANK</option>
+                  {bankOptions.map((b) => (
+                    <option key={b.id} value={String(b.id)}>
+                      [{b.bank_code}] {b.account_name} - {b.account_no}
+                    </option>
+                  ))}
                 </select>
               </th>
-              <th></th> {/* Desc (kosong, biar lebih lega) */}
+              <th className="w-28">
+                {/* CAT */}
+                <select value={fCat ?? ''} onChange={(e)=>setFCat(e.target.value)} className="border rounded px-2 py-1 w-full">
+                  <option value="">ALL</option>
+                  <option value="Expense">Expense</option>
+                  <option value="Biaya Transfer">Biaya Transfer</option>
+                  <option value="Sesama CM">Sesama CM</option>
+                  <option value="Depo">Depo</option>
+                  <option value="WD">WD</option>
+                  <option value="Pending DP">Pending DP</option>
+                  <option value="Adjustment">Adjustment</option>
+                </select>
+              </th>
+              <th></th> {/* Desc */}
               <th className="w-40"></th> {/* Amount */}
-              <th className="w-52">
-                {/* Date range berdasarkan Waktu Click */}
+
+              {/* Waktu Dipilih (range atas–bawah) */}
+              <th className="w-40">
                 <div className="flex flex-col gap-1">
-                  <input type="date" value={fStart} onChange={(e)=>setFStart(e.target.value)} className="border rounded px-2 py-1" />
-                  <input type="date" value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
+                  <input type="date"  value={fStart}  onChange={(e)=>setFStart(e.target.value)}  className="border rounded px-2 py-1" />
+                  <input type="date"  value={fFinish} onChange={(e)=>setFFinish(e.target.value)} className="border rounded px-2 py-1" />
                 </div>
               </th>
-              <th className="w-52"></th> {/* Waktu Dipilih */}
-              <th className="w-40"></th> {/* Start */}
-              <th className="w-40"></th> {/* Finish */}
-              <th className="w-32">
-                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1">Submit</button>
+
+              {/* Kolom yang tersisa untuk merapikan grid + tombol Submit di kanan */}
+              <th className="w-40"></th> {/* Waktu Click (tidak difilter di grid) */}
+              <th className="w-28"></th> {/* Start */}
+              <th className="w-28"></th> {/* Finish */}
+              <th className="w-28">
+                <button onClick={apply} className="rounded bg-blue-600 text-white px-3 py-1 w-full">Submit</button>
               </th>
             </tr>
 
-            {/* === HEADER ROW === */}
+            {/* ===== HEADERS ===== */}
             <tr>
-              <th className="text-left w-28">ID</th>
+              <th className="text-left w-20">ID</th>
               <th className="text-left">Bank</th>
-              <th className="text-left w-44">Cat</th>
+              <th className="text-left w-28">Cat</th>
               <th className="text-left">Desc</th>
               <th className="text-left w-40">Amount</th>
-              <th className="text-left w-52">Waktu Click</th>
-              <th className="text-left w-52">Waktu Dipilih</th>
-              <th className="text-left w-40">Start</th>
-              <th className="text-left w-40">Finish</th>
-              <th className="text-left w-32">Creator</th>
+              <th className="text-left w-40">Waktu Click</th>
+              <th className="text-left w-40">Waktu Dipilih</th>
+              <th className="text-left w-28">Start</th>
+              <th className="text-left w-28">Finish</th>
+              <th className="text-left w-28">Creator</th>
             </tr>
           </thead>
 
           <tbody>
-            {loading ? (
-              <tr><td colSpan={10}>Loading…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={10}>No data</td></tr>
-            ) : (
-              rows.map(r => (
-                <tr key={r.display_id} className="hover:bg-gray-50">
-                  {/* ID (sementara pakai prefiks jenis + id sumber agar unik & stabil) */}
-                  <td className="whitespace-nowrap">{r.display_id}</td>
+            {rows.map((r, idx) => (
+              <tr key={r.key /* pakai key unikmu */} className="hover:bg-gray-50">
+                {/* ID nomor urut 1..n (kalau ada paging, pakai rumus total) */}
+                <td>{typeof page === 'number' && typeof PAGE_SIZE === 'number'
+                      ? (page - 1) * PAGE_SIZE + idx + 1
+                      : idx + 1}</td>
 
-                  {/* Bank + garis + note unik */}
-                  <td className="whitespace-normal break-words">
-                    <div className="font-semibold">{bankLabel(r.bank_id)}</div>
-                    <div className="border-t my-1" />
-                    <div className="text-sm">{renderBankNote(r)}</div>
-                  </td>
+                {/* Bank: label lengkap + keterangan sesuai Cat (sudah ada di implementasimu) */}
+                <td className="whitespace-normal break-words">
+                  {/* contoh struktur:
+                     <div className="font-semibold">[{b.code}] {b.name} - {b.no}</div>
+                     <div className="border-t my-1"></div>
+                     <div>...keterangan unik (Transfer dari A ke B / Depo dari username / dsb.)</div>
+                  */}
+                  {renderBankCell(r)}
+                </td>
 
-                  {/* Category */}
-                  <td>{r.category}</td>
+                <td className="w-28">{r.category}</td>
+                <td>{r.description ?? ""}</td>
+                <td className="w-40">{formatAmount(r.amount_net ?? r.amount)}</td>
 
-                  {/* Desc (Description asli) */}
-                  <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
+                {/* Waktu Click (lihat logika yang sudah kita set: TT=created_at; lainnya=txn_at_opened) */}
+                <td className="w-40">
+                  {new Date(r.click_time_iso).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
+                </td>
 
-                  {/* Amount (sudah bertanda, format rata kiri meniru DP/WD) */}
-                  <td className="text-left">{formatAmount(r.amount)}</td>
+                {/* Waktu Dipilih: TT = 2 baris (from/to), lainnya = 1 baris (txn_at_final) */}
+                <td className="w-40">
+                  {r.kind === "TT" ? (
+                    <>
+                      <div>{new Date(r.from_txn_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</div>
+                      <div>{new Date(r.to_txn_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</div>
+                    </>
+                  ) : (
+                    new Date(r.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
+                  )}
+                </td>
 
-                  {/* Waktu Click */}
-                  <td>
-                    {new Date(r.waktu_click).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
-                  </td>
-
-                  {/* Waktu Dipilih: 1 baris (umum) atau 2 baris (TT) */}
-                  <td>
-                    <div>
-                      {r.final_1 ? new Date(r.final_1).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "-"}
-                    </div>
-                    {r.final_2 && (
-                      <div>
-                        {new Date(r.final_2).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Start/Finish — placeholder dulu, akan diisi saat ledger balance siap */}
-                  <td>—</td>
-                  <td>—</td>
-
-                  {/* Creator */}
-                  <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
-                </tr>
-              ))
-            )}
+                <td className="w-28">{formatAmount(r.open_balance)}</td>
+                <td className="w-28">{formatAmount(r.close_balance)}</td>
+                <td className="w-28">{r.created_by_name ?? r.created_by?.slice(0,8) ?? "-"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
