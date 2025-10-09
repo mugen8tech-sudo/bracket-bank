@@ -320,7 +320,7 @@ export default function BankMutationsTable() {
           <div className="whitespace-normal break-words">
             <div className="font-semibold">{top}</div>
             {sep}
-            <div>{who ? <>Pending Deposit • Player: {who}</> : "Pending Deposit"}</div>
+            <div>{who ? <>Pending Deposit •</> : "Pending Deposit"}</div>
           </div>
         );
       }
