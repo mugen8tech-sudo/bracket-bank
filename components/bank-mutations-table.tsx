@@ -21,7 +21,9 @@ type DepositRow = {
   id: number;
   bank_id: number;
   amount_net: number;
-  username_snapshot: string | null;
+  username_snapshot: string;
+  lead_bank_snapshot: string | null;     // <— baru
+  lead_accno_snapshot: string | null;    // <— baru
   txn_at_opened: string; // waktu klik
   txn_at_final: string;  // waktu dipilih
   created_by: string | null;
@@ -206,11 +208,14 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("deposits")
           .select(
-            "id, bank_id, amount_net, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_net, username_snapshot, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
+        q = q
+          .not("lead_bank_snapshot", "is", null)
+          .not("lead_accno_snapshot", "is", null);
         const { data, error } = await q;
         if (error) console.error(error);
         return (data as DepositRow[]) ?? [];
