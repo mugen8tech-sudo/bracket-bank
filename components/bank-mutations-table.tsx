@@ -426,6 +426,8 @@ export default function BankMutationsTable() {
       // filter bank di level baris karena ada 2 bank
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
       const includeTo = !bankIdFilter || r.bank_to_id === bankIdFilter;
+      const fromLabel = labelBank(r.bank_from_id);
+      const toLabel   = labelBank(r.bank_to_id);
       if (includeFrom) {
         if (!fCat || fCat === "Sesama CM") {
           result.push({
@@ -433,8 +435,8 @@ export default function BankMutationsTable() {
             tsPickTop: r.from_txn_at, // atas = from
             tsPickBottom: r.to_txn_at, // bawah = to
             cat: "Sesama CM",
-            bankTop: labelBank(r.bank_from_id),
-            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
+            bankTop: fromLabel,
+            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
             desc: "—",
             amount: -Number(r.amount_gross || 0),
             start: (r as any).from_balance_before ?? null,
@@ -450,8 +452,8 @@ export default function BankMutationsTable() {
             tsPickTop: r.from_txn_at,
             tsPickBottom: r.to_txn_at,
             cat: "Sesama CM",
-            bankTop: labelBank(r.bank_to_id),
-            bankSub: `Transfer dari ${labelBank(r.bank_from_id).split("] ")[0].replace("[","")} ke ${labelBank(r.bank_to_id).split("] ")[0].replace("[","")}`,
+            bankTop: fromLabel,
+            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
             desc: "—",
             amount: +Number(r.amount_gross || 0),
             start: (r as any).to_balance_before ?? null,
