@@ -521,12 +521,15 @@ export default function BankMutationsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const canPrev = page > 1;
-  const canNext = page < totalPages;
+  const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const displayNumber = (idxOnPage: number) =>
+    pageRows.length - idxOnPage; // 9..1 di halaman (sesuai contohmu)
 
   /* =========================
      R E N D E R
      ========================= */
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
 
   return (
     <div className="space-y-3">
