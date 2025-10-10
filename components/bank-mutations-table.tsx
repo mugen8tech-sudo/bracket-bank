@@ -36,7 +36,7 @@ type WithdrawalRow = {
   id: number;
   bank_id: number;
   amount_gross: number;
-  transfer_fee_amount?: number | null; // ← fee WD
+  transfer_fee_amount?: number | null; // fee WD
   username_snapshot: string;
   bank_name: string;
   txn_at_opened: string;
@@ -66,7 +66,7 @@ type InterbankRow = {
   bank_from_id: number;
   bank_to_id: number;
   amount_gross: number;
-  fee_amount?: number | null; // ← fee TT
+  fee_amount?: number | null; // fee TT
   from_txn_at: string;
   to_txn_at: string;
   created_at: string;
@@ -120,15 +120,14 @@ function fmtDateJak(s?: string | null) {
 
 /* unified row untuk tabel */
 type Row = {
-  // tampilan
-  tsClick: string; // utk sort/ID
-  tsPickTop?: string | null;   // baris 1 Waktu Dipilih
-  tsPickBottom?: string | null; // baris 2 (khusus TT)
+  tsClick: string;              // utk sort/ID (desc)
+  tsPickTop?: string | null;    // tampil atas (dipilih)
+  tsPickBottom?: string | null; // tampil bawah (khusus TT)
   cat: string;
-  bankTop: string; // [code] name - no
-  bankSub?: string | null; // keterangan (transfer dari/dari player, dst)
-  desc?: string | null; // kolom Desc
-  amount: number; // signed
+  bankTop: string;              // [code] name - no (bank baris ini)
+  bankSub?: string | null;      // keterangan (transfer dari/dari player)
+  desc?: string | null;
+  amount: number;               // signed
   start?: number | null;
   finish?: number | null;
   by?: string | null;
@@ -175,7 +174,7 @@ export default function BankMutationsTable() {
   const [fClickStart, setFClickStart] = useState("");
   const [fClickFinish, setFClickFinish] = useState("");
   const [fCat, setFCat] = useState<
-    "" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense" | "Biaya Transfer"
+    "" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Biaya Transfer" | "Adjustment" | "Expense"
   >("");
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
@@ -249,8 +248,8 @@ export default function BankMutationsTable() {
             "id, bank_id, amount_net, description, txn_at_opened, txn_at_final, is_assigned, assigned_username_snapshot, assigned_at, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        // Untuk baris "Pending DP" → filter pakai txn_at_opened.
-        // Untuk baris "Depo dari PDP (assign)" → filter pakai assigned_at (di-mapping di bawah).
+        // "Pending DP" → filter pakai txn_at_opened.
+        // "Depo dari PDP (assign)" → filter pakai assigned_at (di mapping di bawah).
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
         const { data, error } = await q;
@@ -264,8 +263,7 @@ export default function BankMutationsTable() {
           .select(
             "id, bank_from_id, bank_to_id, amount_gross, fee_amount, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
           );
-        // filter waktu click di created_at
-        if (hasStart) q = q.gte("created_at", sISO!);
+        if (hasStart) q = q.gte("created_at", sISO!); // waktu click
         if (hasFinish) q = q.lte("created_at", eISO!);
         const { data, error } = await q;
         if (error) console.error(error);
@@ -446,45 +444,45 @@ export default function BankMutationsTable() {
       }
     }
 
-    // TT (Sesama CM) → From / Fee (jika ada) / To
+    // TT (Sesama CM) — urutan TO → FEE → FROM
     for (const r of ttResp) {
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
-      const includeTo = !bankIdFilter || r.bank_to_id === bankIdFilter;
+      const includeTo   = !bankIdFilter || r.bank_to_id   === bankIdFilter;
 
       const fromLabel = labelBank(r.bank_from_id);
-      const toLabel = labelBank(r.bank_to_id);
+      const toLabel   = labelBank(r.bank_to_id);
 
       const gross = Number(r.amount_gross || 0);
-      const fee = Number(r.fee_amount || 0);
+      const fee   = Number(r.fee_amount || 0);
 
       const fromBefore = r.from_balance_before ?? null;
-      const toBefore = r.to_balance_before ?? null;
+      const toBefore   = r.to_balance_before   ?? null;
 
       const fromFinishIntermediate =
         fromBefore != null ? Number(fromBefore) - gross : (r.from_balance_after ?? null);
       const toFinish =
-        toBefore != null ? Number(toBefore) + gross : (r.to_balance_after ?? null);
+        toBefore   != null ? Number(toBefore)   + gross : (r.to_balance_after   ?? null);
 
-      // From (debit)
-      if (includeFrom && (!fCat || fCat === "Sesama CM")) {
+      // TO (kredit) — tampilkan dengan bank penerima!
+      if (includeTo && (!fCat || fCat === "Sesama CM")) {
         result.push({
-          tsClick: r.created_at, // waktu klik
+          tsClick: r.created_at,
           tsPickTop: r.from_txn_at,
           tsPickBottom: r.to_txn_at,
           cat: "Sesama CM",
-          bankTop: fromLabel,
+          bankTop: toLabel, // ← FIX: sebelumnya fromLabel
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
           desc: "—",
-          amount: -gross,
-          start: fromBefore,
-          finish: fromFinishIntermediate,
+          amount: +gross,
+          start: toBefore,
+          finish: toFinish,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
 
-      // Biaya Transfer (TT) — hanya di bank FROM
+      // Biaya Transfer (TT) — didebet di bank FROM
       if (includeFrom && fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
-        const feeStart = fromFinishIntermediate;
+        const feeStart  = fromFinishIntermediate;
         const feeFinish = feeStart != null ? Number(feeStart) - fee : null;
         result.push({
           tsClick: r.created_at,
@@ -500,8 +498,8 @@ export default function BankMutationsTable() {
         });
       }
 
-      // To (kredit)
-      if (includeTo && (!fCat || fCat === "Sesama CM")) {
+      // FROM (debit)
+      if (includeFrom && (!fCat || fCat === "Sesama CM")) {
         result.push({
           tsClick: r.created_at,
           tsPickTop: r.from_txn_at,
@@ -510,9 +508,9 @@ export default function BankMutationsTable() {
           bankTop: fromLabel,
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
           desc: "—",
-          amount: +gross,
-          start: toBefore,
-          finish: toFinish,
+          amount: -gross,
+          start: fromBefore,
+          finish: fromFinishIntermediate,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
@@ -560,12 +558,12 @@ export default function BankMutationsTable() {
         })
       : result;
 
-    // sort: terbaru paling atas — pakai tsClick
+    // sort: terbaru paling atas — pakai tsClick (desc). Sort JS modern stabil → urutan TO → FEE → FROM per TT
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
     setRows(filtered);
     setLoading(false);
-    setPage(1); // reset ke halaman 1 setiap apply
+    setPage(1); // tampilkan dari halaman 1 setelah apply
   };
 
   useEffect(() => {
@@ -612,7 +610,7 @@ export default function BankMutationsTable() {
                 </div>
               </th>
 
-              {/* Waktu Dipilih (placeholder) */}
+              {/* Waktu Dipilih */}
               <th className="w-44"></th>
 
               {/* Cat */}
@@ -698,7 +696,7 @@ export default function BankMutationsTable() {
               </tr>
             ) : (
               pageRows.map((r, i) => {
-                const dispId = rows.length - (startIdx + i); // nomor urut global (terbaru terbesar)
+                const dispId = rows.length - (startIdx + i); // ID global: paling baru paling besar
                 return (
                   <tr key={`${r.tsClick}-${startIdx + i}`} className="align-top">
                     <td>{dispId}</td>
