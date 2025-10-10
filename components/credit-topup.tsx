@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { useRouter } from "next/navigation";
+import { formatAmount } from "@/lib/format";
 
-/** ================= Roles (konsisten dgn Sidebar) ================= */
+/* ================= Roles (konsisten dgn Sidebar) ================= */
 type AppRole = "admin" | "cs" | "viewer" | "other";
 const normalizeRole = (r?: string | null): AppRole => {
   const v = (r || "").toLowerCase();
@@ -14,88 +15,116 @@ const normalizeRole = (r?: string | null): AppRole => {
   return "other";
 };
 
-/** ================= Currency & Date helpers ================= */
-const nfID = new Intl.NumberFormat("id-ID");
-const formatID = (n: number) => (Number.isFinite(n) ? nfID.format(n) : "");
-const parseCurrency = (s: string) => {
-  // ambil angka & tanda minus/plus saja, buang pemisah ribuan & simbol
-  const cleaned = s.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(",", ".");
-  const val = Number(cleaned);
-  return Number.isFinite(val) ? val : NaN;
-};
+/* ================= Amount helpers (adopsi Banks) ================= */
+// live grouping: "1234.5" -> "1,234.5" (maks 2 desimal), caret tetap nyaman
+function formatWithGroupingLive(raw: string) {
+  let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot !== -1) {
+    cleaned =
+      cleaned.slice(0, firstDot + 1) +
+      cleaned.slice(firstDot + 1).replace(/\./g, "");
+  }
+  let [intPart = "0", fracPartRaw] = cleaned.split(".");
+  intPart = intPart.replace(/^0+(?=\d)/, "");
+  if (intPart === "") intPart = "0";
+  const intGrouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  if (fracPartRaw !== undefined) {
+    const frac = fracPartRaw.slice(0, 2);
+    return fracPartRaw.length === 0 ? intGrouped + "." : intGrouped + "." + frac;
+  }
+  return intGrouped;
+}
+function toNumber(input: string) {
+  let c = (input || "0").replace(/,/g, "");
+  if (c.endsWith(".")) c = c.slice(0, -1);
+  const n = Number(c);
+  return isNaN(n) ? 0 : n;
+}
 
-// yyyy-MM-ddTHH:mm untuk <input type="datetime-local">
+/* ================= Date helpers ================= */
 const toInputLocal = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
     d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-// helper filter tanggal lokal Jakarta -> ISO UTC
-const startIsoJakarta = (d: string) => new Date(`${d}T00:00:00+07:00`).toISOString();
-const endIsoJakarta = (d: string) => new Date(`${d}T23:59:59.999+07:00`).toISOString();
-
-/** ================= Type & Const ================= */
-type Topup = {
+/* ================= Types ================= */
+type TopupRow = {
   id: number;
   tenant_id: string;
   delta_credit: number;
   note: string | null;
-  created_at: string; // timestamptz
+  created_at: string;     // timestamptz
   created_by: string | null;
 };
 
 const PAGE_SIZE = 25;
 
-/** ================= Component ================= */
 export default function CreditTopup() {
   const supabase = supabaseBrowser();
   const router = useRouter();
 
-  // ---------- Tenant & Role ----------
+  // ===== tenant & role =====
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const [brand, setBrand] = useState<string>("TECH");
+  const [brand, setBrand] = useState("TECH");
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [role, setRole] = useState<AppRole>("other");
-  const [bootLoading, setBootLoading] = useState(true);
+  const [booting, setBooting] = useState(true);
 
-  // ---------- Data & Pagination ----------
-  const [rows, setRows] = useState<Topup[]>([]);
+  // ===== data =====
+  const [rows, setRows] = useState<TopupRow[]>([]);
+  const [nameBy, setNameBy] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+
+  // ===== pagination =====
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+  const goFirst = () => canPrev && load(1);
+  const goPrev = () => canPrev && load(page - 1);
+  const goNext = () => canNext && load(page + 1);
+  const goLast = () => canNext && load(totalPages);
+  const getPageList = () => {
+    const list: (number | "truncate")[] = [];
+    if (totalPages <= 10) {
+      for (let i = 1; i <= totalPages; i++) list.push(i);
+      return list;
+    }
+    if (page <= 6) return [1, 2, 3, 4, 5, 6, "truncate", totalPages];
+    if (page >= totalPages - 5) {
+      list.push(1, "truncate");
+      for (let i = totalPages - 5; i <= totalPages; i++) list.push(i);
+      return list;
+    }
+    return [1, "truncate", page - 1, page, page + 1, "truncate", totalPages];
+  };
 
-  // ---------- FILTERS (baris di atas header) ----------
-  const [fId, setFId] = useState<string>("");
-  const [fMin, setFMin] = useState<string>("");
-  const [fMax, setFMax] = useState<string>("");
-  const [fStart, setFStart] = useState<string>("");
-  const [fFinish, setFFinish] = useState<string>("");
-  const [fNote, setFNote] = useState<string>("");
-
-  // ---------- Modal ----------
+  // ===== modal =====
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [amountInput, setAmountInput] = useState<string>("");
-  const [trxAtInput, setTrxAtInput] = useState<string>(toInputLocal(new Date()));
-  const [description, setDescription] = useState<string>("");
+  const [amountStr, setAmountStr] = useState("0.00");
+  const [trxAt, setTrxAt] = useState(toInputLocal(new Date()));
+  const [description, setDescription] = useState("");
+  const amountRef = useRef<HTMLInputElement | null>(null);
 
   const canSubmit = useMemo(
     () => (role === "admin" || role === "cs") && !submitting,
     [role, submitting]
   );
 
-  /** ================= Bootstrap (role + tenant + saldo) ================= */
+  /* ================= Bootstrap ================= */
   useEffect(() => {
     (async () => {
-      setBootLoading(true);
+      setBooting(true);
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        setBootLoading(false);
+        setBooting(false);
         return;
       }
 
@@ -105,8 +134,7 @@ export default function CreditTopup() {
         .eq("user_id", user.id)
         .single();
 
-      const r = normalizeRole(prof?.role);
-      setRole(r);
+      setRole(normalizeRole(prof?.role));
       if (prof?.tenant_id) {
         setTenantId(prof.tenant_id);
 
@@ -121,114 +149,82 @@ export default function CreditTopup() {
           typeof tenant?.credit_balance === "number" ? tenant!.credit_balance : null
         );
       }
-      setBootLoading(false);
+      setBooting(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** ================= Query builder (mirip Leads) ================= */
-  const buildQuery = () => {
-    let q = supabase
+  /* ================= Loader ================= */
+  const load = async (pageToLoad = page) => {
+    if (!tenantId) return;
+    setLoading(true);
+
+    const from = (pageToLoad - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    // Ambil topup ledger untuk tenant ini
+    const { data, error, count } = await supabase
       .from("tenant_ledger")
       .select("id, tenant_id, delta_credit, note, created_at, created_by", {
         count: "exact",
       })
+      .eq("tenant_id", tenantId)
       .eq("ref_type", "credit_topup")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(from, to);
 
-    if (tenantId) q = q.eq("tenant_id", tenantId);
-
-    if (fId.trim()) {
-      const asNum = Number(fId.trim());
-      if (!Number.isNaN(asNum)) q = q.eq("id", asNum);
-    }
-    if (fMin.trim()) {
-      const minVal = parseCurrency(fMin);
-      if (Number.isFinite(minVal)) q = q.gte("delta_credit", minVal);
-    }
-    if (fMax.trim()) {
-      const maxVal = parseCurrency(fMax);
-      if (Number.isFinite(maxVal)) q = q.lte("delta_credit", maxVal);
-    }
-    if (fNote.trim()) q = q.ilike("note", `%${fNote.trim()}%`);
-    if (fStart) q = q.gte("created_at", startIsoJakarta(fStart));
-    if (fFinish) q = q.lte("created_at", endIsoJakarta(fFinish));
-
-    return q;
-  };
-
-  /** ================= Loader ================= */
-  const load = async (pageToLoad = page) => {
-    setLoading(true);
-    const from = (pageToLoad - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-
-    let q = buildQuery().range(from, to);
-
-    const { data, error, count } = await q;
-    setLoading(false);
     if (error) {
+      setLoading(false);
       alert(error.message);
-    } else {
-      setRows((data as Topup[]) ?? []);
-      setTotal(count ?? 0);
-      setPage(pageToLoad);
+      return;
     }
+
+    const list = (data as TopupRow[]) ?? [];
+    setRows(list);
+    setTotal(count ?? 0);
+    setPage(pageToLoad);
+
+    // Ambil nama pembuat (By) sekali jalan
+    const ids = Array.from(
+      new Set(list.map((r) => r.created_by).filter(Boolean)) as string[]
+    );
+    if (ids.length) {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", ids);
+      const map: Record<string, string> = {};
+      (profs ?? []).forEach((p: any) => (map[p.user_id] = p.full_name || p.user_id));
+      setNameBy(map);
+    } else {
+      setNameBy({});
+    }
+
+    setLoading(false);
   };
 
-  // pertama kali setelah bootstrap selesai
+  // load saat tenantId siap
   useEffect(() => {
     if (tenantId) load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
-  const applyFilters = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    load(1);
-  };
-
-  /** ================= Pagination controls (mirip Leads) ================= */
-  const canPrev = page > 1;
-  const canNext = page < totalPages;
-
-  const goFirst = () => canPrev && load(1);
-  const goPrev = () => canPrev && load(page - 1);
-  const goNext = () => canNext && load(page + 1);
-  const goLast = () => canNext && load(totalPages);
-
-  const getPageList = () => {
-    const list: (number | "truncate")[] = [];
-    if (totalPages <= 10) {
-      for (let i = 1; i <= totalPages; i++) list.push(i);
-      return list;
-    }
-    if (page <= 6) {
-      list.push(1, 2, 3, 4, 5, 6, "truncate", totalPages);
-      return list;
-    }
-    if (page >= totalPages - 5) {
-      list.push(1, "truncate");
-      for (let i = totalPages - 5; i <= totalPages; i++) list.push(i);
-      return list;
-    }
-    list.push(1, "truncate", page - 1, page, page + 1, "truncate", totalPages);
-    return list;
-  };
-
-  /** ================= Modal handlers ================= */
+  /* ================= Modal handlers ================= */
   const openNew = () => {
     if (role !== "admin" && role !== "cs") {
       alert("Hanya Admin & CS yang bisa melakukan Credit Topup.");
       return;
     }
-    setAmountInput("");
-    setTrxAtInput(toInputLocal(new Date()));
+    setAmountStr("0.00");
+    setTrxAt(toInputLocal(new Date()));
     setDescription("");
     setShowForm(true);
+    setTimeout(() => amountRef.current?.select(), 0);
   };
 
   const closeModal = useCallback(() => setShowForm(false), []);
-  // ESC to close
+
+  // ESC untuk close
   useEffect(() => {
     if (!showForm) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeModal();
@@ -236,46 +232,43 @@ export default function CreditTopup() {
     return () => document.removeEventListener("keydown", onKey);
   }, [showForm, closeModal]);
 
-  /** ================= Submit Topup ================= */
+  /* ================= Submit ================= */
   const submitTopup = async () => {
     if (role !== "admin" && role !== "cs") {
       alert("Hanya Admin & CS yang bisa melakukan Credit Topup.");
       return;
     }
-
-    const amount = parseCurrency(amountInput);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert("Amount harus angka dan > 0.");
+    const amt = toNumber(amountStr);
+    if (!(amt > 0)) {
+      alert("Amount harus lebih dari 0.");
+      amountRef.current?.focus();
       return;
     }
 
     setSubmitting(true);
     try {
-      const p_txn_at = new Date(trxAtInput).toISOString();
-
       const { error } = await supabase.rpc("perform_tenant_credit_topup", {
-        p_amount: amount,
-        p_txn_at,
+        p_amount: amt,
+        p_txn_at: new Date(trxAt).toISOString(),
         p_description: description || null,
       });
-
       if (error) {
         alert(error.message);
         return;
       }
 
-      // refresh saldo tenant
+      // Refresh saldo & tabel
       if (tenantId) {
         const { data: t } = await supabase
           .from("tenants")
           .select("credit_balance")
           .eq("id", tenantId)
           .single();
-        if (typeof t?.credit_balance === "number") setCreditBalance(t.credit_balance);
+        if (typeof t?.credit_balance === "number")
+          setCreditBalance(t.credit_balance);
       }
-
-      // reload tabel ke halaman 1
       await load(1);
+
       setShowForm(false);
       router.refresh?.();
       alert("Credit Topup berhasil disimpan.");
@@ -284,24 +277,24 @@ export default function CreditTopup() {
     }
   };
 
-  /** ================= Render ================= */
+  /* ================= UI ================= */
   return (
     <div className="space-y-3">
-      {/* Header: brand & saldo + tombol new */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
-          Credit Topup — {bootLoading ? "…" : brand} &nbsp;|&nbsp; Credit Balance:&nbsp;
+          Credit Topup — {booting ? "…" : brand} &nbsp;|&nbsp; Credit Balance:&nbsp;
           <span className="font-semibold">
-            {creditBalance != null ? formatID(creditBalance) : "—"}
+            {creditBalance != null ? formatAmount(creditBalance) : "—"}
           </span>
         </div>
         <button
           type="button"
           onClick={openNew}
-          disabled={bootLoading || !(role === "admin" || role === "cs")}
+          disabled={booting || !(role === "admin" || role === "cs")}
           className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-50"
           title={
-            bootLoading
+            booting
               ? "Memuat…"
               : role === "admin" || role === "cs"
               ? "Buat Credit Topup"
@@ -316,84 +309,14 @@ export default function CreditTopup() {
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[900px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* -------- Row FILTERS (di atas header) -------- */}
-            <tr className="filters">
-              <th>
-                <input
-                  placeholder="ID"
-                  value={fId}
-                  onChange={(e) => setFId(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-                  className="w-full border rounded px-2 py-1"
-                />
-              </th>
-              <th>
-                <div className="flex gap-1">
-                  <input
-                    placeholder="min"
-                    value={fMin}
-                    onChange={(e) => setFMin(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-                    className="w-full border rounded px-2 py-1"
-                    inputMode="numeric"
-                  />
-                  <input
-                    placeholder="max"
-                    value={fMax}
-                    onChange={(e) => setFMax(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-                    className="w-full border rounded px-2 py-1"
-                    inputMode="numeric"
-                  />
-                </div>
-              </th>
-              <th>
-                <input
-                  placeholder="note"
-                  value={fNote}
-                  onChange={(e) => setFNote(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && applyFilters()}
-                  className="w-full border rounded px-2 py-1"
-                />
-              </th>
-              <th>
-                <div className="flex flex-col gap-1">
-                  <input
-                    type="date"
-                    value={fStart}
-                    onChange={(e) => setFStart(e.target.value)}
-                    className="border rounded px-2 py-1"
-                    aria-label="Start date"
-                  />
-                  <input
-                    type="date"
-                    value={fFinish}
-                    onChange={(e) => setFFinish(e.target.value)}
-                    className="border rounded px-2 py-1"
-                    aria-label="Finish date"
-                  />
-                </div>
-              </th>
-              <th className="whitespace-nowrap">
-                <button
-                  onClick={applyFilters}
-                  className="rounded bg-blue-600 text-white px-3 py-1"
-                >
-                  Submit
-                </button>
-              </th>
-            </tr>
-
-            {/* -------- Row HEADER -------- */}
             <tr>
-              <th className="text-left">ID</th>
-              <th className="text-left">Amount</th>
-              <th className="text-left min-w-[240px]">Description</th>
-              <th className="text-left">Transaction Date</th>
-              <th className="text-left">Action</th>
+              <th className="text-left w-24">ID</th>
+              <th className="text-left w-48">Amount</th>
+              <th className="text-left min-w-[320px]">Description</th>
+              <th className="text-left w-60">Tgl</th>
+              <th className="text-left w-60">By</th>
             </tr>
           </thead>
-
           <tbody>
             {loading ? (
               <tr>
@@ -407,8 +330,8 @@ export default function CreditTopup() {
               rows.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td>{r.id}</td>
-                  <td>{formatID(r.delta_credit)}</td>
-                  <td className="whitespace-normal break-words min-w-[240px]">
+                  <td>{formatAmount(r.delta_credit)}</td>
+                  <td className="whitespace-normal break-words min-w-[320px]">
                     {r.note ?? "-"}
                   </td>
                   <td>
@@ -416,7 +339,7 @@ export default function CreditTopup() {
                       timeZone: "Asia/Jakarta",
                     })}
                   </td>
-                  <td>—</td>
+                  <td>{r.created_by ? nameBy[r.created_by] ?? r.created_by : "-"}</td>
                 </tr>
               ))
             )}
@@ -424,7 +347,7 @@ export default function CreditTopup() {
         </table>
       </div>
 
-      {/* ---------- Pagination ---------- */}
+      {/* Pagination */}
       <div className="flex justify-center">
         <nav className="inline-flex items-center gap-1 text-sm select-none">
           <button
@@ -480,7 +403,7 @@ export default function CreditTopup() {
         </nav>
       </div>
 
-      {/* ---------- Modal ---------- */}
+      {/* Modal */}
       {showForm && (
         <div
           className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
@@ -495,14 +418,9 @@ export default function CreditTopup() {
             }}
             className="bg-white rounded border w-full max-w-xl mt-10"
           >
-            <div className="p-4 border-b flex justify-between items-center">
+            <div className="p-4 border-b flex items-center justify-between">
               <div className="font-semibold">New Credit Topup — {brand}</div>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="text-sm"
-                aria-label="Close"
-              >
+              <button type="button" onClick={closeModal} className="text-sm" aria-label="Close">
                 ✕
               </button>
             </div>
@@ -511,16 +429,32 @@ export default function CreditTopup() {
               <div>
                 <label className="block text-xs mb-1">Amount</label>
                 <input
+                  ref={amountRef}
                   className="border rounded px-3 py-2 w-full"
-                  placeholder="1.000.000"
-                  value={amountInput}
-                  onChange={(e) => setAmountInput(e.target.value)}
-                  onBlur={(e) => {
-                    const val = parseCurrency(e.target.value);
-                    if (Number.isFinite(val) && val > 0) setAmountInput(formatID(val));
+                  value={amountStr}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => {
+                    const f = formatWithGroupingLive(e.target.value);
+                    setAmountStr(f);
+                    setTimeout(() => {
+                      const el = amountRef.current;
+                      if (el) {
+                        const L = el.value.length;
+                        el.setSelectionRange(L, L);
+                      }
+                    }, 0);
+                  }}
+                  onBlur={() => {
+                    const n = toNumber(amountStr);
+                    setAmountStr(
+                      new Intl.NumberFormat("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }).format(n)
+                    );
                   }}
                   inputMode="numeric"
-                  autoFocus
+                  placeholder="1,000,000.00"
                   required
                 />
               </div>
@@ -529,9 +463,10 @@ export default function CreditTopup() {
                 <label className="block text-xs mb-1">Transaction Date</label>
                 <input
                   type="datetime-local"
-                  className="border rounded px-3 py-2"
-                  value={trxAtInput}
-                  onChange={(e) => setTrxAtInput(e.target.value)}
+                  step="1"
+                  className="border rounded px-3 py-2 w-full"
+                  value={trxAt}
+                  onChange={(e) => setTrxAt(e.target.value)}
                   required
                 />
               </div>
@@ -552,7 +487,7 @@ export default function CreditTopup() {
                 onClick={closeModal}
                 className="rounded px-4 py-2 bg-gray-100"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="submit"
