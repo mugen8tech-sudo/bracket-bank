@@ -936,7 +936,7 @@ export default function BanksTable() {
                 {dpBank.account_no}
               </div>
               <div className="text-xs mt-1">
-                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+                Balance: <b>{formatAmount(tenantCredit)}</b>
               </div>
             </div>
             <div className="p-4 space-y-3">
@@ -1083,7 +1083,7 @@ export default function BanksTable() {
                 {wdBank.account_no}
               </div>
               <div className="text-xs mt-1">
-                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+                Balance: <b>{formatAmount(tenantCredit)}</b>
               </div>
             </div>
             <div className="p-4 space-y-3">
@@ -1269,7 +1269,7 @@ export default function BanksTable() {
                 {pdpBank.account_no}
               </div>
               <div className="text-xs mt-1">
-                Balance (Credit Tenant): <b>{formatAmount(tenantCredit)}</b>
+                Balance: <b>{formatAmount(tenantCredit)}</b>
               </div>
             </div>
             <div className="p-4 space-y-3">
