@@ -673,6 +673,15 @@ export default function BanksTable() {
           style={{ borderCollapse: "collapse" }}
         >
           <thead>
+            {/* Baris ringkasan balance di atas header kolom */}
+            <tr>
+              <th colSpan={6} className="text-left p-2 border-b bg-white">
+                <span className="text-xs mr-1">Balance (Credit Tenant):</span>
+                <b>{formatAmount(tenantCredit)}</b>
+              </th>
+            </tr>
+
+            {/* Header kolom existing */}
             <tr>
               <th className="text-left w-16">ID</th>
               <th className="text-left min-w-[260px]">Bank</th>
