@@ -23,12 +23,11 @@ type DepositRow = {
   amount_net: number;
   username_snapshot: string;
   bank_name: string;
-  lead_bank_snapshot: string | null;     // <— baru
-  lead_accno_snapshot: string | null;    // <— baru
+  lead_bank_snapshot: string | null;
+  lead_accno_snapshot: string | null;
   txn_at_opened: string; // waktu klik
   txn_at_final: string;  // waktu dipilih
   created_by: string | null;
-  // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -37,12 +36,12 @@ type WithdrawalRow = {
   id: number;
   bank_id: number;
   amount_gross: number;
-  username_snapshot: string
+  transfer_fee_amount?: number | null; // ← fee WD
+  username_snapshot: string;
   bank_name: string;
   txn_at_opened: string;
   txn_at_final: string;
   created_by: string | null;
-  // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -58,7 +57,6 @@ type PendingDepositRow = {
   assigned_username_snapshot: string | null;
   assigned_at: string | null;
   created_by: string | null;
-  // kolom baru:
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -68,11 +66,11 @@ type InterbankRow = {
   bank_from_id: number;
   bank_to_id: number;
   amount_gross: number;
+  fee_amount?: number | null; // ← fee TT
   from_txn_at: string;
   to_txn_at: string;
   created_at: string;
   created_by: string | null;
-  // kolom baru (opsional – aman jika belum ada di DB):
   from_balance_before?: number | null;
   from_balance_after?: number | null;
   to_balance_before?: number | null;
@@ -124,11 +122,11 @@ function fmtDateJak(s?: string | null) {
 type Row = {
   // tampilan
   tsClick: string; // utk sort/ID
-  tsPickTop?: string | null; // baris 1 Waktu Dipilih
+  tsPickTop?: string | null;   // baris 1 Waktu Dipilih
   tsPickBottom?: string | null; // baris 2 (khusus TT)
   cat: string;
   bankTop: string; // [code] name - no
-  bankSub?: string | null; // keterangan di kolom bank (transfer dari/dari player, dst)
+  bankSub?: string | null; // keterangan (transfer dari/dari player, dst)
   desc?: string | null; // kolom Desc
   amount: number; // signed
   start?: number | null;
@@ -164,20 +162,21 @@ export default function BankMutationsTable() {
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const start = (page - 1) * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
-  const pageRows = useMemo(() => rows.slice(start, end), [rows, page, start, end]);
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const endIdx = startIdx + PAGE_SIZE;
+  const pageRows = useMemo(() => rows.slice(startIdx, endIdx), [rows, startIdx, endIdx]);
 
-  // jaga2 jika jumlah data berubah (filter baru), page > totalPages → tarik kembali
   useEffect(() => {
     const tp = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     if (page > tp) setPage(tp);
   }, [rows, page]);
 
-  // filters (sesuai versi yang sudah cocok sebelumnya)
+  // filters
   const [fClickStart, setFClickStart] = useState("");
   const [fClickFinish, setFClickFinish] = useState("");
-  const [fCat, setFCat] = useState<"" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense">("");
+  const [fCat, setFCat] = useState<
+    "" | "Depo" | "WD" | "Pending DP" | "Sesama CM" | "Adjustment" | "Expense" | "Biaya Transfer"
+  >("");
   const [fBankId, setFBankId] = useState<"" | number>("");
   const [fDesc, setFDesc] = useState("");
 
@@ -199,10 +198,10 @@ export default function BankMutationsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const apply = async (pageInit?: boolean) => {
+  const apply = async () => {
     setLoading(true);
 
-    // range waktu utk Waktu Click (tiap sumber dipakai kolom berbeda, lihat di bawah)
+    // range waktu utk Waktu Click (tiap sumber dipakai kolom berbeda)
     const hasStart = !!fClickStart;
     const hasFinish = !!fClickFinish;
     const sISO = hasStart ? toIsoStartJakarta(fClickStart) : undefined;
@@ -212,14 +211,8 @@ export default function BankMutationsTable() {
     const bankIdFilter = fBankId && typeof fBankId === "number" ? fBankId : null;
 
     // ===== ambil semua sumber =====
-    const [
-      depResp,
-      wdResp,
-      pdpResp,
-      ttResp,
-      adjResp,
-      expResp,
-    ] = await Promise.all([
+    const [depResp, wdResp, pdpResp, ttResp, adjResp, expResp] = await Promise.all([
+      // Deposits
       (async () => {
         let q = supabase
           .from("deposits")
@@ -229,18 +222,17 @@ export default function BankMutationsTable() {
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
-        q = q
-          .not("lead_bank_snapshot", "is", null)
-          .not("lead_accno_snapshot", "is", null);
+        q = q.not("lead_bank_snapshot", "is", null).not("lead_accno_snapshot", "is", null);
         const { data, error } = await q;
         if (error) console.error(error);
         return (data as DepositRow[]) ?? [];
       })(),
+      // Withdrawals (+ transfer_fee_amount)
       (async () => {
         let q = supabase
           .from("withdrawals")
           .select(
-            "id, bank_id, amount_gross, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_gross, transfer_fee_amount, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
@@ -249,6 +241,7 @@ export default function BankMutationsTable() {
         if (error) console.error(error);
         return (data as WithdrawalRow[]) ?? [];
       })(),
+      // Pending Deposits
       (async () => {
         let q = supabase
           .from("pending_deposits")
@@ -264,19 +257,21 @@ export default function BankMutationsTable() {
         if (error) console.error(error);
         return (data as PendingDepositRow[]) ?? [];
       })(),
+      // Interbank Transfers (+ fee_amount)
       (async () => {
         let q = supabase
           .from("interbank_transfers")
           .select(
-            "id, bank_from_id, bank_to_id, amount_gross, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
+            "id, bank_from_id, bank_to_id, amount_gross, fee_amount, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
           );
-        // filter di level UI (bank id) karena ada dua bank di tiap transfer
+        // filter waktu click di created_at
         if (hasStart) q = q.gte("created_at", sISO!);
         if (hasFinish) q = q.lte("created_at", eISO!);
         const { data, error } = await q;
         if (error) console.error(error);
         return (data as InterbankRow[]) ?? [];
       })(),
+      // Adjustments
       (async () => {
         let q = supabase
           .from("bank_adjustments")
@@ -290,6 +285,7 @@ export default function BankMutationsTable() {
         if (error) console.error(error);
         return (data as AdjustmentRow[]) ?? [];
       })(),
+      // Expenses
       (async () => {
         let q = supabase
           .from("bank_expenses")
@@ -348,11 +344,7 @@ export default function BankMutationsTable() {
 
     // DP (langsung)
     for (const r of depResp) {
-      // filter kategori jika dipilih sesuatu selain ALL
       if (fCat && fCat !== "Depo") continue;
-      if (fDesc && !(r.username_snapshot ?? "").toLowerCase().includes(fDesc.toLowerCase())) {
-        // Desc search diterapkan di kolom Desc dan BankSub; utk DP masuk via BankSub
-      }
       const uname = r.username_snapshot ?? "-";
       const bname = unameMap[uname] ?? "-";
       result.push({
@@ -371,10 +363,9 @@ export default function BankMutationsTable() {
 
     // Depo dari PDP (assign)
     for (const r of pdpResp) {
-      if (!r.is_assigned || !r.assigned_at) continue; // hanya yang sudah assign
+      if (!r.is_assigned || !r.assigned_at) continue;
       if (fCat && fCat !== "Depo") continue;
-      // filter waktu klik khusus rute ini pakai assigned_at (di luar query awal)
-      if (hasStart && r.assigned_at < sISO!) continue;
+      if (hasStart && r.assigned_at < sISO!) continue; // filter click via assigned_at
       if (hasFinish && r.assigned_at > eISO!) continue;
 
       const uname = r.assigned_username_snapshot ?? "-";
@@ -393,7 +384,7 @@ export default function BankMutationsTable() {
       });
     }
 
-    // Pending DP (tetap ada, tidak dihapus meski sudah assign)
+    // Pending DP
     for (const r of pdpResp) {
       if (fCat && fCat !== "Pending DP") continue;
       result.push({
@@ -410,65 +401,120 @@ export default function BankMutationsTable() {
       });
     }
 
-    // WD
+    // WD (+ Biaya Transfer jika ada)
     for (const r of wdResp) {
-      if (fCat && fCat !== "WD") continue;
       const uname = r.username_snapshot ?? "-";
       const bname = unameMap[uname] ?? "-";
-      result.push({
-        tsClick: r.txn_at_opened,
-        tsPickTop: r.txn_at_final,
-        cat: "WD",
-        bankTop: labelBank(r.bank_id),
-        bankSub: `WD dari ${uname} / ${bname}`,
-        desc: "—",
-        amount: -Number(r.amount_gross || 0),
-        start: r.balance_before ?? null,
-        finish: r.balance_after ?? null,
-        by: r.created_by ? byMap[r.created_by] : "-",
-      });
+      const gross = Number(r.amount_gross || 0);
+      const fee = Number(r.transfer_fee_amount || 0);
+      const start = r.balance_before ?? null;
+      const wdFinishIntermediate =
+        start != null ? Number(start) - gross : (r.balance_after ?? null);
+
+      // Baris WD
+      if (!fCat || fCat === "WD") {
+        result.push({
+          tsClick: r.txn_at_opened,
+          tsPickTop: r.txn_at_final,
+          cat: "WD",
+          bankTop: labelBank(r.bank_id),
+          bankSub: `WD dari ${uname} / ${bname}`,
+          desc: "—",
+          amount: -gross,
+          start,
+          finish: wdFinishIntermediate,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
+      }
+
+      // Baris Biaya Transfer (WD)
+      if (fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
+        const feeStart = wdFinishIntermediate;
+        const feeFinish = feeStart != null ? Number(feeStart) - fee : null;
+        result.push({
+          tsClick: r.txn_at_opened,
+          tsPickTop: r.txn_at_final,
+          cat: "Biaya Transfer",
+          bankTop: labelBank(r.bank_id),
+          bankSub: `WD dari ${uname} / ${bname}`,
+          desc: "—",
+          amount: -fee,
+          start: feeStart,
+          finish: feeFinish,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
+      }
     }
 
-    // TT (Sesama CM) → 2 baris
+    // TT (Sesama CM) → From / Fee (jika ada) / To
     for (const r of ttResp) {
-      // filter bank di level baris karena ada 2 bank
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
       const includeTo = !bankIdFilter || r.bank_to_id === bankIdFilter;
+
       const fromLabel = labelBank(r.bank_from_id);
-      const toLabel   = labelBank(r.bank_to_id);
-      if (includeFrom) {
-        if (!fCat || fCat === "Sesama CM") {
-          result.push({
-            tsClick: r.created_at, // waktu klik
-            tsPickTop: r.from_txn_at, // atas = from
-            tsPickBottom: r.to_txn_at, // bawah = to
-            cat: "Sesama CM",
-            bankTop: fromLabel,
-            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
-            desc: "—",
-            amount: -Number(r.amount_gross || 0),
-            start: (r as any).from_balance_before ?? null,
-            finish: (r as any).from_balance_after ?? null,
-            by: r.created_by ? byMap[r.created_by] : "-",
-          });
-        }
+      const toLabel = labelBank(r.bank_to_id);
+
+      const gross = Number(r.amount_gross || 0);
+      const fee = Number(r.fee_amount || 0);
+
+      const fromBefore = r.from_balance_before ?? null;
+      const toBefore = r.to_balance_before ?? null;
+
+      const fromFinishIntermediate =
+        fromBefore != null ? Number(fromBefore) - gross : (r.from_balance_after ?? null);
+      const toFinish =
+        toBefore != null ? Number(toBefore) + gross : (r.to_balance_after ?? null);
+
+      // From (debit)
+      if (includeFrom && (!fCat || fCat === "Sesama CM")) {
+        result.push({
+          tsClick: r.created_at, // waktu klik
+          tsPickTop: r.from_txn_at,
+          tsPickBottom: r.to_txn_at,
+          cat: "Sesama CM",
+          bankTop: fromLabel,
+          bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
+          desc: "—",
+          amount: -gross,
+          start: fromBefore,
+          finish: fromFinishIntermediate,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
       }
-      if (includeTo) {
-        if (!fCat || fCat === "Sesama CM") {
-          result.push({
-            tsClick: r.created_at,
-            tsPickTop: r.from_txn_at,
-            tsPickBottom: r.to_txn_at,
-            cat: "Sesama CM",
-            bankTop: fromLabel,
-            bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
-            desc: "—",
-            amount: +Number(r.amount_gross || 0),
-            start: (r as any).to_balance_before ?? null,
-            finish: (r as any).to_balance_after ?? null,
-            by: r.created_by ? byMap[r.created_by] : "-",
-          });
-        }
+
+      // Biaya Transfer (TT) — hanya di bank FROM
+      if (includeFrom && fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
+        const feeStart = fromFinishIntermediate;
+        const feeFinish = feeStart != null ? Number(feeStart) - fee : null;
+        result.push({
+          tsClick: r.created_at,
+          tsPickTop: r.from_txn_at,
+          cat: "Biaya Transfer",
+          bankTop: fromLabel,
+          bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
+          desc: "—",
+          amount: -fee,
+          start: feeStart,
+          finish: feeFinish,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
+      }
+
+      // To (kredit)
+      if (includeTo && (!fCat || fCat === "Sesama CM")) {
+        result.push({
+          tsClick: r.created_at,
+          tsPickTop: r.from_txn_at,
+          tsPickBottom: r.to_txn_at,
+          cat: "Sesama CM",
+          bankTop: fromLabel,
+          bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
+          desc: "—",
+          amount: +gross,
+          start: toBefore,
+          finish: toFinish,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
       }
     }
 
@@ -509,25 +555,21 @@ export default function BankMutationsTable() {
     // filter "Search desc"
     const filtered = fDesc.trim()
       ? result.filter((r) => {
-          const hay =
-            (r.desc ?? "") +
-            " " +
-            (r.bankSub ?? "") +
-            " " +
-            (r.bankTop ?? "");
+          const hay = (r.desc ?? "") + " " + (r.bankSub ?? "") + " " + (r.bankTop ?? "");
           return hay.toLowerCase().includes(fDesc.trim().toLowerCase());
         })
       : result;
 
-    // sort: ID dari timestamp seluruh transaksi (klik) → terbaru paling atas
+    // sort: terbaru paling atas — pakai tsClick
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
     setRows(filtered);
     setLoading(false);
+    setPage(1); // reset ke halaman 1 setiap apply
   };
 
   useEffect(() => {
-    apply(true);
+    apply();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -545,7 +587,7 @@ export default function BankMutationsTable() {
               <th className="w-24">
                 <button
                   className="border rounded px-2 py-1 text-xs"
-                  onClick={() => { setPage(1); apply(true); }}
+                  onClick={() => { setPage(1); apply(); }}
                   title="Cari (apply filter)"
                 >
                   Cari
@@ -570,7 +612,7 @@ export default function BankMutationsTable() {
                 </div>
               </th>
 
-              {/* Waktu Dipilih (tidak ada filter – kolom ini dikunci lebar) */}
+              {/* Waktu Dipilih (placeholder) */}
               <th className="w-44"></th>
 
               {/* Cat */}
@@ -585,6 +627,7 @@ export default function BankMutationsTable() {
                   <option value="Depo">Depo</option>
                   <option value="Pending DP">Pending DP</option>
                   <option value="WD">WD</option>
+                  <option value="Biaya Transfer">Biaya Transfer</option>
                   <option value="Adjustment">Adjustment</option>
                   <option value="Expense">Expense</option>
                 </select>
@@ -621,7 +664,7 @@ export default function BankMutationsTable() {
 
               <th colSpan={4} className="text-left">
                 <button
-                  onClick={() => { setPage(1); apply(true); }}
+                  onClick={() => { setPage(1); apply(); }}
                   className="rounded bg-blue-600 text-white px-3 py-1"
                 >
                   Submit
@@ -655,9 +698,9 @@ export default function BankMutationsTable() {
               </tr>
             ) : (
               pageRows.map((r, i) => {
-                const dispId = rows.length - (start + i); // nomor urut global
+                const dispId = rows.length - (startIdx + i); // nomor urut global (terbaru terbesar)
                 return (
-                  <tr key={`${r.tsClick}-${start + i}`} className="align-top">
+                  <tr key={`${r.tsClick}-${startIdx + i}`} className="align-top">
                     <td>{dispId}</td>
                     <td>{fmtDateJak(r.tsClick)}</td>
                     <td>
@@ -688,38 +731,25 @@ export default function BankMutationsTable() {
           </tbody>
         </table>
 
-        {/* === Kontrol Paginasi (25 baris) === */}
+        {/* Kontrol Paginasi */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-2 p-2 border-t text-sm">
+          <div className="opacity-70">
+            Menampilkan {rows.length === 0 ? 0 : startIdx + 1}–{Math.min(endIdx, rows.length)} dari {rows.length} entri (25/halaman)
+          </div>
           <div className="flex items-center gap-1">
-            <button
-              className="px-2 py-1 border rounded disabled:opacity-50"
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-            >
+            <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage(1)} disabled={page <= 1}>
               « First
             </button>
-            <button
-              className="px-2 py-1 border rounded disabled:opacity-50"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
+            <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
               ‹ Prev
             </button>
             <span className="px-2">
               Halaman <strong>{page}</strong> dari <strong>{totalPages}</strong>
             </span>
-            <button
-              className="px-2 py-1 border rounded disabled:opacity-50"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-            >
+            <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
               Next ›
             </button>
-            <button
-              className="px-2 py-1 border rounded disabled:opacity-50"
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-            >
+            <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>
               Last »
             </button>
           </div>
