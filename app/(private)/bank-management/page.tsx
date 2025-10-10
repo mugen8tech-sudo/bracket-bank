@@ -17,7 +17,7 @@ type Bank = {
   direct_fee_enabled: boolean;
   direct_fee_percent: number;
   balance: number;
-  metadata: Record<string, any> | null;
+  metadata?: Record<string, any> | null;
   // join ke tenants
   tenants?: { name: string } | null;
 };
