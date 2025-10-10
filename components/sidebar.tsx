@@ -1,49 +1,46 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type Role = "admin" | "cs" | "viewer" | "loading";
+/**
+ * Normalisasi role dari public.profiles:
+ * - 'assops' (lama) dipetakan ke 'cs'
+ * - 'agent' tidak dipakai → treat sebagai 'viewer'
+ */
+function normalizeRole(r?: string | null): "admin" | "cs" | "viewer" | "other" {
+  const v = (r || "").toLowerCase();
+  if (v === "admin") return "admin";
+  if (v === "cs" || v === "assops") return "cs";
+  if (v === "viewer" || v === "agent") return "viewer";
+  return "other";
+}
 
-type NavItem = {
+type MenuItem = {
   label: string;
   href: string;
-  roles: Role[];         // siapa yang boleh melihat
-  enabled?: boolean;     // jika false → ditampilkan disabled (placeholder)
+  enabled?: boolean;                 // jika false → tampil non‑klik (placeholder)
+  roles?: Array<"admin" | "cs" | "viewer">; // siapa yang boleh melihat item ini
 };
 
 export default function Sidebar() {
   const pathname = usePathname();
   const supabase = supabaseBrowser();
 
-  const [role, setRole] = useState<Role>("loading");
-  const [tenantLabel, setTenantLabel] = useState<string>("—");
-
-  // Normalisasi role dari public.profiles:
-  // - 'admin' → admin
-  // - 'cs' / 'assops' → cs
-  // - 'viewer' / 'agent' → viewer
-  function normalizeRole(raw?: string | null): Role {
-    if (!raw) return "viewer";
-    const r = raw.toLowerCase();
-    if (r === "admin") return "admin";
-    if (r === "cs" || r === "assops") return "cs";
-    if (r === "viewer" || r === "agent") return "viewer";
-    return "viewer";
-  }
+  const [brand, setBrand] = useState<string>("TECH");     // header kiri
+  const [role, setRole] = useState<"admin" | "cs" | "viewer" | "other">("other");
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setRole("viewer");
-        return;
-      }
+      if (!user) { setLoading(false); return; }
 
-      // Ambil role & tenant_id dari profil
+      // Ambil role & tenant
       const { data: prof } = await supabase
         .from("profiles")
         .select("role, tenant_id")
@@ -52,88 +49,84 @@ export default function Sidebar() {
 
       setRole(normalizeRole(prof?.role));
 
-      // Ambil label tenant (name/slug) – pola sama seperti di banks-table.tsx
       if (prof?.tenant_id) {
+        // Ambil slug atau name untuk header brand
         const { data: tenant } = await supabase
           .from("tenants")
-          .select("name, slug")
+          .select("slug, name")
           .eq("id", prof.tenant_id)
           .single();
-        setTenantLabel(tenant?.name ?? tenant?.slug ?? "—");
-      } else {
-        setTenantLabel("—");
+        setBrand(tenant?.slug || tenant?.name || "—");
       }
+      setLoading(false);
     })();
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Definisi menu (urut sesuai sidebar)
-  const ALL_ITEMS: NavItem[] = [
-    { label: "Leads",              href: "/leads",              roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Banks",              href: "/banks",              roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Deposits",           href: "/deposits",           roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Withdrawals",        href: "/withdrawals",        roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Pending Deposits",   href: "/pending-deposits",   roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Interbank Transfer", href: "/interbank-transfer", roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Bank Adjustment",    href: "/bank-adjustments",   roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Expenses",           href: "/expenses",           roles: ["admin", "cs", "viewer"], enabled: true },
-    { label: "Bank Mutation",      href: "/bank-mutation",      roles: ["admin", "cs", "viewer"], enabled: true },
+  // Definisikan menu + kebijakan akses
+  const items: MenuItem[] = [
+    { label: "Leads", href: "/leads", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Banks", href: "/banks", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Deposits", href: "/deposits", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Withdrawals", href: "/withdrawals", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Pending Deposits", href: "/pending-deposits", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Interbank Transfer", href: "/interbank-transfer", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Bank Adjustment", href: "/bank-adjustments", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Expenses", href: "/expenses", enabled: true, roles: ["admin", "cs", "viewer"] },
+    { label: "Bank Mutation", href: "/bank-mutation", enabled: true, roles: ["admin", "cs", "viewer"] },
 
-    // Role-based
-    { label: "Bank Management",    href: "/bank-management",    roles: ["admin"],                 enabled: true },
-    { label: "Credit Topup",       href: "/credit-topup",       roles: ["admin", "cs"],           enabled: true },
+    // Hanya ADMIN
+    { label: "Bank Management", href: "/bank-management", enabled: true, roles: ["admin"] },
 
-    // Placeholder (belum ada halaman) — tetap hanya untuk Admin agar tidak “menggoda” CS/Viewer
-    { label: "Credit Adjustment",  href: "#",                   roles: ["admin"],                 enabled: false },
-    { label: "Credit Mutation",    href: "#",                   roles: ["admin"],                 enabled: false },
-    { label: "Credit Report",      href: "#",                   roles: ["admin"],                 enabled: false },
-    { label: "User Management",    href: "/user-management",    roles: ["admin"],                 enabled: false },
+    // Admin + CS
+    { label: "Credit Topup", href: "/credit-topup", enabled: true, roles: ["admin", "cs"] },
+
+    // Placeholder (belum aktif) – visible utk admin saja biar eksplisit
+    { label: "Credit Adjustment", href: "#", enabled: false, roles: ["admin"] },
+    { label: "Credit Mutation", href: "#", enabled: false, roles: ["admin"] },
+    { label: "Credit Report", href: "#", enabled: false, roles: ["admin"] },
+
+    // Placeholder – hanya ADMIN
+    { label: "User Management", href: "#", enabled: false, roles: ["admin"] },
   ];
 
-  const visibleItems = useMemo(() => {
-    if (role === "loading") return [];
-    return ALL_ITEMS.filter((it) => it.roles.includes(role));
-  }, [role]);
-
-  const isActive = (href: string) => {
-    if (href === "#" || !href) return false;
-    // exact match atau prefix (untuk sub-route)
-    return pathname === href || pathname.startsWith(href + "/");
-  };
+  // Saring menu berdasarkan role
+  const visibleItems = items.filter(it => {
+    if (!it.roles || it.roles.length === 0) return true;
+    return it.roles.includes(role);
+  });
 
   return (
     <aside className="w-[220px] shrink-0 border-r bg-white min-h-[calc(100vh-56px)]">
-      <div className="px-3 py-3 font-semibold">{tenantLabel}</div>
+      <div className="px-3 py-3 font-semibold">
+        {loading ? "…" : brand}
+      </div>
 
       <nav className="px-2 pb-6">
         <ul className="space-y-1">
-          {role === "loading" ? (
-            // skeleton kecil saat loading (opsional)
-            Array.from({ length: 6 }).map((_, i) => (
-              <li key={i}>
-                <span className="block rounded px-3 py-2 text-sm bg-gray-50 text-gray-400">…</span>
+          {visibleItems.map((it) => {
+            const active = pathname === it.href; // sederhana & konsisten dgn file awal
+            const className = clsx(
+              "block rounded px-3 py-2 text-sm",
+              active
+                ? "bg-blue-50 text-blue-700 font-medium"
+                : "text-gray-700 hover:bg-gray-50",
+              !it.enabled && "opacity-50 cursor-not-allowed"
+            );
+
+            return it.enabled ? (
+              <li key={it.label}>
+                <Link href={it.href} className={className}>
+                  {it.label}
+                </Link>
               </li>
-            ))
-          ) : (
-            visibleItems.map((it) => {
-              const active = isActive(it.href);
-              const cls = clsx(
-                "block rounded px-3 py-2 text-sm",
-                active ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700 hover:bg-gray-50",
-                !it.enabled && "opacity-50 cursor-not-allowed"
-              );
-              return (
-                <li key={it.label}>
-                  {it.enabled ? (
-                    <Link href={it.href} className={cls}>
-                      {it.label}
-                    </Link>
-                  ) : (
-                    <span className={cls}>{it.label}</span>
-                  )}
-                </li>
-              );
-            })
-          )}
+            ) : (
+              <li key={it.label}>
+                {/* placeholder (disabled) */}
+                <span className={className}>{it.label}</span>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     </aside>
