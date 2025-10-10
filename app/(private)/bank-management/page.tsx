@@ -256,7 +256,9 @@ export default function BankManagementPage() {
                       <div className="text-xs">{r.account_no}</div>
                     </td>
                     {/* Website: ambil dari join tenants(name), fallback ke tenantName */}
-                    <td className="p-2 border text-center">{r.tenants?.name ?? tenantName ?? "-"}</td>
+                    <td className="p-2 border text-center">
+                      {(r.tenants?.name && r.tenants.name.trim()) || (tenantName && tenantName.trim()) || "-"}
+                    </td>
                     <td className="p-2 border text-center">{formatAmount(r.balance)}</td>
                     <td className="p-2 border text-center">{r.is_active ? "ACTIVE" : "DELETED"}</td>
                     <td className="p-2 border">
