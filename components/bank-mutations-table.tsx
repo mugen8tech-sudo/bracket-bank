@@ -208,6 +208,19 @@ export default function BankMutationsTable() {
     const sISO = hasStart ? toIsoStartJakarta(fClickStart) : undefined;
     const eISO = hasFinish ? toIsoEndJakarta(fClickFinish) : undefined;
 
+    // --- ambil saldo terkini semua bank (untuk running balance) ---
+    type BankBalance = { id: number; balance: number | null };
+
+    const { data: banksNow, error: banksNowErr } = await supabase
+      .from("banks")
+      .select("id, balance") as unknown as { data: BankBalance[] | null; error: any };
+
+    if (banksNowErr) console.error(banksNowErr);
+
+    // Map saldo saat ini: bankId -> balance (number|null)
+    const liveBalance = new Map<number, number | null>();
+    (banksNow ?? []).forEach(b => liveBalance.set(b.id, b.balance ?? null));
+
     // bank filter
     const bankIdFilter = fBankId && typeof fBankId === "number" ? fBankId : null;
 
@@ -551,9 +564,8 @@ export default function BankMutationsTable() {
       .fill(0)
       .map(() => ({ start: null, finish: null }));
 
-    // saldo awal per bank dari tabel banks
-    const current = new Map<number, number | null>();
-    bankList.forEach((b) => current.set(b.id, b.balance ?? null));
+    // saldo awal per bank: pakai saldo TERKINI dari DB (bukan cache bankList)
+    const current = new Map<number, number | null>(liveBalance);
 
     // grup per bankId|tsClick dalam urutan tampilan (desc)
     const groupOrder: string[] = [];
