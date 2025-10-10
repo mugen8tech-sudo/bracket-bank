@@ -1,10 +1,10 @@
-// app/bank-management/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 
+// ==== Types ====
 type Bank = {
   id: number;
   tenant_id: string;
@@ -18,6 +18,8 @@ type Bank = {
   direct_fee_percent: number;
   balance: number;
   metadata: Record<string, any> | null;
+  // join ke tenants
+  tenants?: { name: string } | null;
 };
 
 const BANK_CODES = [
@@ -26,87 +28,107 @@ const BANK_CODES = [
   "LINKAJA","SAKUKU","OTHER"
 ];
 
-const PURPOSE_OPTIONS = [
-  { label: "ALL", value: "neutral" as const },
-  { label: "DP",  value: "deposit" as const },
-  { label: "WD",  value: "withdraw" as const },
+const PURPOSE_OPTIONS: { label: "ALL" | "DP" | "WD"; value: Bank["usage_type"] }[] = [
+  { label: "ALL", value: "neutral" },
+  { label: "DP",  value: "deposit" },
+  { label: "WD",  value: "withdraw" },
 ];
 
 export default function BankManagementPage() {
   const supabase = supabaseBrowser();
 
+  // ===== Guard: hanya Admin =====
   const [authorized, setAuthorized] = useState<"loading"|"ok"|"no">("loading");
   const [tenantName, setTenantName] = useState<string>("");
+
+  // ===== Data banks =====
   const [rows, setRows] = useState<Bank[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ====== Edit modal ======
+  // ===== Edit modal =====
   const [showEdit, setShowEdit] = useState(false);
   const [editing, setEditing] = useState<Bank | null>(null);
   const [eBankCode, setEBankCode] = useState<string>("");
   const [eAccName, setEAccName] = useState<string>("");
   const [eAccNo, setEAccNo] = useState<string>("");
-  const [ePurpose, setEPurpose] = useState<"neutral"|"deposit"|"withdraw">("neutral");
+  const [ePurpose, setEPurpose] = useState<Bank["usage_type"]>("neutral");
   const [eOrder, setEOrder] = useState<string>("0");
   const [eIsPulsa, setEIsPulsa] = useState<boolean>(false);
   const [eDirectFeeEnabled, setEDirectFeeEnabled] = useState<boolean>(false);
   const [eDirectFeePct, setEDirectFeePct] = useState<string>("0.00");
   const [saving, setSaving] = useState(false);
 
-  // ====== Toggle modal ======
+  // ===== Toggle modal =====
   const [showToggle, setShowToggle] = useState(false);
   const [tBank, setTBank] = useState<Bank | null>(null);
   const [tReason, setTReason] = useState<string>("");
 
-  // guard: hanya admin
+  // ---- Guard + tenant name
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setAuthorized("no"); return; }
+
       const { data: prof } = await supabase
         .from("profiles")
         .select("role, tenant_id")
         .eq("user_id", user.id)
         .single();
-      if (!prof) { setAuthorized("no"); return; }
-      if (prof.role !== "admin") { setAuthorized("no"); return; }
+
+      if (!prof || prof.role !== "admin") { setAuthorized("no"); return; }
       setAuthorized("ok");
 
-      // tenant name (untuk kolom Website)
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("name")
-        .eq("id", prof.tenant_id)
-        .single();
-      setTenantName(tenant?.name ?? "");
+      // Tenant name (fallback jika join ke tenants nanti gagal)
+      if (prof?.tenant_id) {
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("name")
+          .eq("id", prof.tenant_id)
+          .maybeSingle();
+        setTenantName(tenant?.name ?? "");
+      }
 
-      await loadBanks();
+      await loadBanks(); // muat data awal
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- Load banks (join tenants(name) untuk kolom Website)
   async function loadBanks() {
     setLoading(true);
+    // NOTE: RLS di banks akan memfilter per-tenant otomatis
     const { data, error } = await supabase
       .from("banks")
-      .select("*"); // RLS akan memfilter by tenant
+      .select("*, tenants(name)")
+      .order("id", { ascending: false });
+
     setLoading(false);
-    if (error) { alert(error.message); return; }
+    if (error) {
+      // fallback: kalau join diblokir policy, coba tanpa join
+      const alt = await supabase.from("banks").select("*").order("id", { ascending: false });
+      if (alt.error) {
+        alert(error.message);
+        return;
+      }
+      setRows((alt.data as Bank[]) ?? []);
+      return;
+    }
     setRows((data as Bank[]) ?? []);
   }
 
+  // ---- Sorting: display_order kecil dulu, lalu ACTIVE di atas, lalu ID terbaru
   const rowsSorted = useMemo(() => {
-    const sortKey = (b: Bank) =>
+    const displayOrder = (b: Bank) =>
       Number((b.metadata as any)?.display_order ?? Number.POSITIVE_INFINITY);
     return [...rows].sort((a, b) => {
-      const ao = sortKey(a), bo = sortKey(b);
+      const ao = displayOrder(a), bo = displayOrder(b);
       if (ao !== bo) return ao - bo;
-      // aktif dulu, lalu ID terbaru dulu
       if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
       return b.id - a.id;
     });
   }, [rows]);
 
+  // ---- Edit open
   function openEdit(b: Bank) {
     setEditing(b);
     setEBankCode(b.bank_code);
@@ -123,6 +145,7 @@ export default function BankManagementPage() {
     setShowEdit(true);
   }
 
+  // ---- Edit submit
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
@@ -133,10 +156,9 @@ export default function BankManagementPage() {
       return;
     }
     const displayOrder = Number(eOrder || "0");
-
-    setSaving(true);
     const meta = { ...(editing.metadata ?? {}), display_order: displayOrder };
 
+    setSaving(true);
     const { error } = await supabase
       .from("banks")
       .update({
@@ -153,12 +175,12 @@ export default function BankManagementPage() {
 
     setSaving(false);
     if (error) { alert(error.message); return; }
-
     setShowEdit(false);
     setEditing(null);
     await loadBanks();
   }
 
+  // ---- Toggle open / submit
   function openToggle(b: Bank) {
     setTBank(b);
     setTReason("");
@@ -183,15 +205,13 @@ export default function BankManagementPage() {
       .eq("id", tBank.id);
 
     if (error) { alert(error.message); return; }
-
     setShowToggle(false);
     setTBank(null);
     await loadBanks();
   }
 
-  if (authorized === "loading") {
-    return <div className="p-6">Loading…</div>;
-  }
+  // ---- Render guards
+  if (authorized === "loading") return <div className="p-6">Loading…</div>;
   if (authorized === "no") {
     return (
       <div className="p-6">
@@ -235,11 +255,10 @@ export default function BankManagementPage() {
                       <div className="font-semibold">[{r.bank_code}] {r.account_name}</div>
                       <div className="text-xs">{r.account_no}</div>
                     </td>
-                    <td className="p-2 border text-center">{tenantName || "-"}</td>
+                    {/* Website: ambil dari join tenants(name), fallback ke tenantName */}
+                    <td className="p-2 border text-center">{r.tenants?.name ?? tenantName ?? "-"}</td>
                     <td className="p-2 border text-center">{formatAmount(r.balance)}</td>
-                    <td className="p-2 border text-center">
-                      {r.is_active ? "ACTIVE" : "DELETED"}
-                    </td>
+                    <td className="p-2 border text-center">{r.is_active ? "ACTIVE" : "DELETED"}</td>
                     <td className="p-2 border">
                       <div className="flex items-center justify-center gap-2">
                         <button
@@ -264,7 +283,7 @@ export default function BankManagementPage() {
         </table>
       </div>
 
-      {/* ==== Edit Modal ==== */}
+      {/* ===== Edit Modal ===== */}
       {showEdit && editing && (
         <div
           className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
@@ -275,57 +294,98 @@ export default function BankManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-xs mb-1">Bank Provider</label>
-                <select className="border rounded px-3 py-2 w-full"
-                        value={eBankCode} onChange={e=>setEBankCode(e.target.value)} required>
-                  {BANK_CODES.map(b => <option key={b} value={b}>{b}</option>)}
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={eBankCode}
+                  onChange={(e)=>setEBankCode(e.target.value)}
+                  required
+                >
+                  {BANK_CODES.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs mb-1">Nama rekening</label>
-                <input className="border rounded px-3 py-2 w-full"
-                       value={eAccName} onChange={e=>setEAccName(e.target.value)} required />
+                <input
+                  className="border rounded px-3 py-2 w-full"
+                  value={eAccName}
+                  onChange={(e)=>setEAccName(e.target.value)}
+                  required
+                />
               </div>
+
               <div>
                 <label className="block text-xs mb-1">No rekening</label>
-                <input className="border rounded px-3 py-2 w-full"
-                       value={eAccNo} onChange={e=>setEAccNo(e.target.value)} required />
+                <input
+                  className="border rounded px-3 py-2 w-full"
+                  value={eAccNo}
+                  onChange={(e)=>setEAccNo(e.target.value)}
+                  required
+                />
               </div>
+
               <div>
                 <label className="block text-xs mb-1">Purpose</label>
-                <select className="border rounded px-3 py-2 w-full"
-                        value={ePurpose} onChange={e=>setEPurpose(e.target.value as any)} required>
-                  {PURPOSE_OPTIONS.map(o => (
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={ePurpose}
+                  onChange={(e)=>setEPurpose(e.target.value as Bank["usage_type"])}
+                >
+                  {PURPOSE_OPTIONS.map((o)=>(
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </div>
+
               <div>
                 <label className="block text-xs mb-1">Urutan</label>
-                <input type="number" className="border rounded px-3 py-2 w-full"
-                       value={eOrder} onChange={e=>setEOrder(e.target.value)} />
+                <input
+                  type="number"
+                  className="border rounded px-3 py-2 w-full"
+                  value={eOrder}
+                  onChange={(e)=>setEOrder(e.target.value)}
+                />
               </div>
+
+              {/* Is Cash Basis? & Bank Tampung? — tidak dipakai (diminta disembunyikan) */}
+
               <div className="flex items-center gap-2">
-                <input id="e_pulsa" type="checkbox"
-                       checked={eIsPulsa} onChange={e=>setEIsPulsa(e.target.checked)} />
+                <input
+                  id="e_pulsa"
+                  type="checkbox"
+                  checked={eIsPulsa}
+                  onChange={(e)=>setEIsPulsa(e.target.checked)}
+                />
                 <label htmlFor="e_pulsa">Is Pulsa?</label>
               </div>
+
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <input id="e_df" type="checkbox"
-                         checked={eDirectFeeEnabled} onChange={e=>setEDirectFeeEnabled(e.target.checked)} />
+                  <input
+                    id="e_df"
+                    type="checkbox"
+                    checked={eDirectFeeEnabled}
+                    onChange={(e)=>setEDirectFeeEnabled(e.target.checked)}
+                  />
                   <label htmlFor="e_df">Potongan Langsung?</label>
                 </div>
                 {eDirectFeeEnabled && (
                   <div>
                     <label className="block text-xs mb-1">% potongan langsung</label>
-                    <input type="number" min={0} max={100} step="0.01"
-                           className="border rounded px-3 py-2 w-full"
-                           value={eDirectFeePct}
-                           onChange={e=>setEDirectFeePct(e.target.value)} />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      className="border rounded px-3 py-2 w-full"
+                      value={eDirectFeePct}
+                      onChange={(e)=>setEDirectFeePct(e.target.value)}
+                    />
                   </div>
                 )}
               </div>
             </div>
+
             <div className="border-t p-4 flex justify-end gap-2">
               <button type="button" onClick={()=>setShowEdit(false)} className="rounded px-4 py-2 bg-gray-100">Close</button>
               <button disabled={saving} className="rounded px-4 py-2 bg-blue-600 text-white">
@@ -336,7 +396,7 @@ export default function BankManagementPage() {
         </div>
       )}
 
-      {/* ==== Toggle Status Modal ==== */}
+      {/* ===== Toggle Status Modal ===== */}
       {showToggle && tBank && (
         <div
           className="fixed inset-0 bg-black/30 flex items-start justify-center p-4"
@@ -344,21 +404,29 @@ export default function BankManagementPage() {
         >
           <form onSubmit={submitToggle} className="bg-white rounded border w-full max-w-2xl mt-10">
             <div className="p-4 border-b font-semibold">Konfirmasi Aktifasi bank</div>
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-3 gap-2 text-sm">
+            <div className="p-4 space-y-3 text-sm">
+              <div className="grid grid-cols-3 gap-2">
                 <div className="font-medium">Bank Provider</div>
                 <div className="col-span-2">[{tBank.bank_code}]</div>
+
                 <div className="font-medium">Account Name</div>
                 <div className="col-span-2">{tBank.account_name}</div>
+
                 <div className="font-medium">Account No</div>
                 <div className="col-span-2">{tBank.account_no}</div>
+
                 <div className="font-medium">Status</div>
                 <div className="col-span-2">{tBank.is_active ? "ACTIVE" : "DELETED"}</div>
               </div>
+
               <div>
                 <label className="block text-xs mb-1">Alasan</label>
-                <input className="border rounded px-3 py-2 w-full"
-                       value={tReason} onChange={(e)=>setTReason(e.target.value)} />
+                <input
+                  className="border rounded px-3 py-2 w-full"
+                  value={tReason}
+                  onChange={(e)=>setTReason(e.target.value)}
+                  placeholder="opsional"
+                />
               </div>
             </div>
             <div className="border-t p-4 flex justify-end gap-2">
