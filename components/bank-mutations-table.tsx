@@ -546,63 +546,6 @@ export default function BankMutationsTable() {
     // sort: terbaru paling atas; JS sort stabil → urutan TT tetap TO → FEE → FROM
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
-    // ====== HITUNG ULANG START/FINISH BERDASARKAN SALDO TERKINI PER BANK ======
-    // Strategi: kelompokkan per (bankId, tsClick), lalu urutkan intra-kelompok
-    // dengan prioritas kalkulasi: FROM/WD (1) → FEE (2).
-    const getCalcPriority = (r: Row) => {
-      const isTTFee = r.cat === "Biaya Transfer" && (r.bankSub ?? "").startsWith("Transfer dari");
-      const isWDFee = r.cat === "Biaya Transfer" && (r.bankSub ?? "").startsWith("WD dari");
-      const isTTFrom = r.cat === "Sesama CM" && r.amount < 0;
-      const isWDMain = r.cat === "WD";
-      if (isTTFrom || isWDMain) return 1;
-      if (isTTFee || isWDFee) return 2;
-      return 1; // kategori lain single-step
-    };
-
-    // mapping index → {start, finish}
-    const computed: { start: number | null; finish: number | null }[] = Array(filtered.length)
-      .fill(0)
-      .map(() => ({ start: null, finish: null }));
-
-    // saldo awal per bank: pakai saldo TERKINI dari DB (bukan cache bankList)
-    const current = new Map<number, number | null>(liveBalance);
-
-    // grup per bankId|tsClick dalam urutan tampilan (desc)
-    const groupOrder: string[] = [];
-    const groupMap = new Map<string, number[]>();
-    filtered.forEach((r, idx) => {
-      const key = `${r.bankId}|${r.tsClick}`;
-      if (!groupMap.has(key)) {
-        groupMap.set(key, []);
-        groupOrder.push(key);
-      }
-      groupMap.get(key)!.push(idx);
-    });
-
-    // jalan per grup: urutkan intra-grup by calc priority, lalu hitung running balance
-    for (const key of groupOrder) {
-      const [bankIdStr] = key.split("|");
-      const bankId = Number(bankIdStr);
-      const idxs = groupMap.get(key)!;
-      const ordered = idxs
-        .slice()
-        .sort((i1, i2) => getCalcPriority(filtered[i1]) - getCalcPriority(filtered[i2]));
-      for (const idx of ordered) {
-        const r = filtered[idx];
-        const curr = current.get(bankId);
-        const start: number | null = (curr === undefined ? null : curr);
-        const finish: number | null = (start === null ? null : Number(start) + Number(r.amount ?? 0));
-        current.set(bankId, (finish ?? start));
-        computed[idx] = { start, finish };
-      }
-    }
-
-    const withBalances: Row[] = filtered.map((r, idx) => ({
-      ...r,
-      start: computed[idx].start,
-      finish: computed[idx].finish,
-    }));
-
     setRows(withBalances);
     setLoading(false);
     setPage(1); // tampil dari halaman 1 setelah apply
