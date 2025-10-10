@@ -546,7 +546,7 @@ export default function BankMutationsTable() {
     // sort: terbaru paling atas; JS sort stabil → urutan TT tetap TO → FEE → FROM
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
-    setRows(withBalances);
+    setRows(filtered);
     setLoading(false);
     setPage(1); // tampil dari halaman 1 setelah apply
   };
