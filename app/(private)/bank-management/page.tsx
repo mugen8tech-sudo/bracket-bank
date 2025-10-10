@@ -1,12 +1,10 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import BankManagement from "@/components/bank-management";
 
-export default function BankManagement() {
+export default function Page() {
+  // Server component wrapper (halaman) yang merender komponen client
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Bank Management</h1>
+    <div className="p-6">
+      <h1 className="text-xl font-semibold mb-4">Bank Management</h1>
       <BankManagement />
     </div>
   );
