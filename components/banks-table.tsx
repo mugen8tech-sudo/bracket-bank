@@ -631,25 +631,44 @@ export default function BanksTable() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Silakan login ulang.");
+      return;
+    }
+
+    // ⬇️ ambil role juga
     const { data: prof, error: e1 } = await supabase
       .from("profiles")
-      .select("tenant_id")
-      .eq("user_id", user?.id)
+      .select("tenant_id, role")
+      .eq("user_id", user.id)
       .single();
+
     if (e1) {
       alert(e1.message);
       return;
     }
+
+    // ⬇️ guard: hanya admin yang boleh submit
+    const role = (prof?.role ?? "").toLowerCase();
+    if (role !== "admin") {
+      alert("Hanya admin yang bisa menyimpan Setting Potongan.");
+      return;
+    }
+
+    // lanjutkan proses simpan seperti biasa
     const { error } = await supabase.from("tenant_settings").upsert({
       tenant_id: prof?.tenant_id,
       bank_direct_fee_hits_credit: hitCredit,
       updated_at: new Date().toISOString(),
-      updated_by: user?.id ?? null,
+      updated_by: user.id ?? null,
     });
+
     if (error) {
       alert(error.message);
       return;
     }
+
     setShowSetting(false);
   };
 
@@ -681,9 +700,26 @@ export default function BanksTable() {
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
-          onClick={() => setShowSetting(true)}
-          className="rounded bg-gray-100 px-4 py-2"
-          title="Pengaturan dampak potongan langsung ke credit tenant"
+          onClick={() => {
+            // guard terakhir di client
+            if (role !== "admin") {
+              alert("Hanya admin yang bisa membuka Setting Potongan.");
+              return;
+            }
+            setShowSetting(true);
+          }}
+          disabled={roleLoading || role !== "admin"}
+          aria-disabled={roleLoading || role !== "admin"}
+          className={`rounded bg-gray-100 px-4 py-2 ${
+            roleLoading || role !== "admin" ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+          title={
+            roleLoading
+              ? "Memuat role…"
+              : role !== "admin"
+              ? "Hanya admin yang bisa submit"
+              : "Pengaturan dampak potongan langsung ke credit tenant"
+          }
         >
           Setting Potongan → Credit
         </button>
