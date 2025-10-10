@@ -39,7 +39,7 @@ export default function BankManagementPage() {
 
   // ===== Guard: hanya Admin =====
   const [authorized, setAuthorized] = useState<"loading"|"ok"|"no">("loading");
-  const [tenantName, setTenantName] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState<string>("");
 
   // ===== Data banks =====
   const [rows, setRows] = useState<Bank[]>([]);
@@ -62,6 +62,26 @@ export default function BankManagementPage() {
   const [showToggle, setShowToggle] = useState(false);
   const [tBank, setTBank] = useState<Bank | null>(null);
   const [tReason, setTReason] = useState<string>("");
+
+  // === ambil nama tenant persis seperti di components/banks-table.tsx ===
+  async function loadTenantName() {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("user_id", user?.id)
+      .single(); // sama seperti banks-table.tsx
+    if (prof?.tenant_id) {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("name")
+        .eq("id", prof.tenant_id)
+        .single(); // sama seperti banks-table.tsx
+      setTenantName(tenant?.name ?? "");
+    } else {
+      setTenantName("");
+    }
+  }
 
   // ---- Guard + tenant name
   useEffect(() => {
@@ -88,18 +108,18 @@ export default function BankManagementPage() {
         setTenantName(tenant?.name ?? null);
       }
 
-      await loadBanks(); // muat data awal
+      await loadTenantName(); // ambil nama tenant (cara banks-table.tsx)
+      await loadBanks();      // muat data bank
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- Load banks (join tenants(name) untuk kolom Website)
   async function loadBanks() {
     setLoading(true);
-    // NOTE: RLS di banks akan memfilter per-tenant otomatis
+    // Tidak perlu join tenants; Website diambil dari loadTenantName()
     const { data, error } = await supabase
       .from("banks")
-      .select("*, tenants(name)")
+      .select("*")
       .order("id", { ascending: false });
 
     setLoading(false);
@@ -255,8 +275,8 @@ export default function BankManagementPage() {
                       <div className="font-semibold">[{r.bank_code}] {r.account_name}</div>
                       <div className="text-xs">{r.account_no}</div>
                     </td>
-                    {/* Website: ambil dari join tenants(name), fallback ke tenantName */}
-                    <td className="p-2 border text-center">{r.tenants?.name ?? tenantName ?? "-"}</td>
+                    {/* Website: pakai tenantName seperti banks-table.tsx */}
+                    <td className="p-2 border text-center">{tenantName || "-"}</td>
                     <td className="p-2 border text-center">{formatAmount(r.balance)}</td>
                     <td className="p-2 border text-center">{r.is_active ? "ACTIVE" : "DELETED"}</td>
                     <td className="p-2 border">
