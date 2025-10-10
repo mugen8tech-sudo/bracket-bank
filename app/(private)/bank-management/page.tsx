@@ -17,9 +17,7 @@ type Bank = {
   direct_fee_enabled: boolean;
   direct_fee_percent: number;
   balance: number;
-  metadata?: Record<string, any> | null;
-  // join ke tenants
-  tenants?: { name: string } | null;
+  metadata: Record<string, any> | null;
 };
 
 const BANK_CODES = [
@@ -39,6 +37,8 @@ export default function BankManagementPage() {
 
   // ===== Guard: hanya Admin =====
   const [authorized, setAuthorized] = useState<"loading"|"ok"|"no">("loading");
+
+  // ===== Tenant (Website) =====
   const [tenantName, setTenantName] = useState<string>("");
 
   // ===== Data banks =====
@@ -63,27 +63,49 @@ export default function BankManagementPage() {
   const [tBank, setTBank] = useState<Bank | null>(null);
   const [tReason, setTReason] = useState<string>("");
 
-  // === ambil nama tenant persis seperti di components/banks-table.tsx ===
-  async function loadTenantName() {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("user_id", user?.id)
-      .single(); // sama seperti banks-table.tsx
-    if (prof?.tenant_id) {
+  // ---- Ambil nama tenant: sama persis seperti komponen Banks (profiles -> tenants)
+  async function loadTenantName(presetTenantId?: string | null) {
+    let tenantId = presetTenantId ?? null;
+
+    if (!tenantId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("user_id", user?.id)
+        .single();
+      tenantId = prof?.tenant_id ?? null;
+    }
+
+    if (tenantId) {
       const { data: tenant } = await supabase
         .from("tenants")
         .select("name")
-        .eq("id", prof.tenant_id)
-        .single(); // sama seperti banks-table.tsx
+        .eq("id", tenantId)
+        .single();
       setTenantName(tenant?.name ?? "");
     } else {
       setTenantName("");
     }
   }
 
-  // ---- Guard + tenant name
+  // ---- Load banks (tanpa join tenants)
+  async function loadBanks() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("banks")
+      .select("*")
+      .order("id", { ascending: false });
+
+    setLoading(false);
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setRows((data as Bank[]) ?? []);
+  }
+
+  // ---- Guard + initial load
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -98,43 +120,11 @@ export default function BankManagementPage() {
       if (!prof || prof.role !== "admin") { setAuthorized("no"); return; }
       setAuthorized("ok");
 
-      // Tenant name (fallback jika join ke tenants nanti gagal)
-      if (prof?.tenant_id) {
-        const { data: tenant } = await supabase
-          .from("tenants")
-          .select("name")
-          .eq("id", prof.tenant_id)
-          .maybeSingle();
-        setTenantName(tenant?.name ?? null);
-      }
-
-      await loadTenantName(); // ambil nama tenant (cara banks-table.tsx)
-      await loadBanks();      // muat data bank
+      await loadTenantName(prof?.tenant_id);
+      await loadBanks();
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ---- Load banks (join tenants(name) untuk kolom Website)
-  async function loadBanks() {
-    setLoading(true);
-    // Tidak perlu join tenants; Website diambil dari loadTenantName()
-    const { data, error } = await supabase
-      .from("banks")
-      .select("*")
-      .order("id", { ascending: false });
-
-    setLoading(false);
-    if (error) {
-      // fallback: kalau join diblokir policy, coba tanpa join
-      const alt = await supabase.from("banks").select("*").order("id", { ascending: false });
-      if (alt.error) {
-        alert(error.message);
-        return;
-      }
-      setRows((alt.data as Bank[]) ?? []);
-      return;
-    }
-    setRows((data as Bank[]) ?? []);
-  }
 
   // ---- Sorting: display_order kecil dulu, lalu ACTIVE di atas, lalu ID terbaru
   const rowsSorted = useMemo(() => {
@@ -275,7 +265,7 @@ export default function BankManagementPage() {
                       <div className="font-semibold">[{r.bank_code}] {r.account_name}</div>
                       <div className="text-xs">{r.account_no}</div>
                     </td>
-                    {/* Website: pakai tenantName seperti banks-table.tsx */}
+                    {/* Website: pola sama seperti banks-table.tsx → pakai tenantName */}
                     <td className="p-2 border text-center">{tenantName || "-"}</td>
                     <td className="p-2 border text-center">{formatAmount(r.balance)}</td>
                     <td className="p-2 border text-center">{r.is_active ? "ACTIVE" : "DELETED"}</td>
