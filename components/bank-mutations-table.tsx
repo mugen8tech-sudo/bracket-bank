@@ -577,9 +577,10 @@ export default function BankMutationsTable() {
         .sort((i1, i2) => getCalcPriority(filtered[i1]) - getCalcPriority(filtered[i2]));
       for (const idx of ordered) {
         const r = filtered[idx];
-        const start = current.get(bankId);
-        const finish = start == null ? null : Number(start) + Number(r.amount || 0);
-        current.set(bankId, finish ?? start ?? null);
+        const curr = current.get(bankId);
+        const start: number | null = (curr === undefined ? null : curr);
+        const finish: number | null = (start === null ? null : Number(start) + Number(r.amount ?? 0));
+        current.set(bankId, (finish ?? start));
         computed[idx] = { start, finish };
       }
     }
