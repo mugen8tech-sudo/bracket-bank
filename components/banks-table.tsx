@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { formatAmount } from "@/lib/format
+import { formatAmount } from "@/lib/format";
 
 // ----- Role helpers (samakan dengan Sidebar) -----
 type AppRole = "admin" | "cs" | "viewer";
