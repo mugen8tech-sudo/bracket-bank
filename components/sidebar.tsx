@@ -91,9 +91,10 @@ export default function Sidebar() {
   ];
 
   // Saring menu berdasarkan role
-  const visibleItems = items.filter(it => {
+  const visibleItems = items.filter((it) => {
     if (!it.roles || it.roles.length === 0) return true;
-    return it.roles.includes(role);
+    if (role === "other") return false; // 'other' tidak punya akses ke item yg dibatasi
+    return it.roles.includes(role);     // di sini 'role' sudah terspesialisasi ke "admin" | "cs" | "viewer"
   });
 
   return (
