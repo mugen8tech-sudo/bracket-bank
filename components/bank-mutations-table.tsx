@@ -13,7 +13,7 @@ type BankLite = {
   bank_code: string;
   account_name: string;
   account_no: string;
-  balance: number | null; // saldo terkini (starting point running balance)
+  balance: number | null; // boleh ada / tidak dipakai untuk Start/Finish
 };
 
 type ProfileLite = { user_id: string; full_name: string | null };
@@ -26,8 +26,8 @@ type DepositRow = {
   bank_name: string;
   lead_bank_snapshot: string | null;
   lead_accno_snapshot: string | null;
-  txn_at_opened: string;
-  txn_at_final: string;
+  txn_at_opened: string; // waktu klik
+  txn_at_final: string;  // waktu dipilih
   created_by: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
@@ -121,7 +121,7 @@ function fmtDateJak(s?: string | null) {
 
 /* unified row untuk tabel */
 type Row = {
-  bankId: number;              // untuk running balance per bank
+  bankId: number;              // untuk filter/paginasi; tidak memengaruhi Start/Finish
   tsClick: string;             // untuk sort/ID (desc)
   tsPickTop?: string | null;
   tsPickBottom?: string | null;
@@ -130,8 +130,8 @@ type Row = {
   bankSub?: string | null;
   desc?: string | null;
   amount: number;              // signed
-  start?: number | null;       // diisi saat running pass
-  finish?: number | null;      // diisi saat running pass
+  start?: number | null;       // diisi saat mapping (DB snapshot / intermediate)
+  finish?: number | null;      // diisi saat mapping (DB snapshot / intermediate)
   by?: string | null;
 };
 
@@ -142,7 +142,7 @@ type Row = {
 export default function BankMutationsTable() {
   const supabase = supabaseBrowser();
 
-  // options bank utk filter + label + saldo terkini
+  // options bank utk filter + label
   const [bankList, setBankList] = useState<BankLite[]>([]);
   const bankMap = useMemo(() => {
     const m = new Map<number, BankLite>();
@@ -187,7 +187,7 @@ export default function BankMutationsTable() {
   // username -> bank_name (untuk DP/WD)
   const [uname2BankName, setUname2BankName] = useState<Record<string, string>>({});
 
-  // load banks once (dengan saldo)
+  // load banks once (label dropdown)
   useEffect(() => {
     (async () => {
       const { data } = await supabase
@@ -207,19 +207,6 @@ export default function BankMutationsTable() {
     const hasFinish = !!fClickFinish;
     const sISO = hasStart ? toIsoStartJakarta(fClickStart) : undefined;
     const eISO = hasFinish ? toIsoEndJakarta(fClickFinish) : undefined;
-
-    // --- ambil saldo terkini semua bank (untuk running balance) ---
-    type BankBalance = { id: number; balance: number | null };
-
-    const { data: banksNow, error: banksNowErr } = await supabase
-      .from("banks")
-      .select("id, balance") as unknown as { data: BankBalance[] | null; error: any };
-
-    if (banksNowErr) console.error(banksNowErr);
-
-    // Map saldo saat ini: bankId -> balance (number|null)
-    const liveBalance = new Map<number, number | null>();
-    (banksNow ?? []).forEach(b => liveBalance.set(b.id, b.balance ?? null));
 
     // bank filter
     const bankIdFilter = fBankId && typeof fBankId === "number" ? fBankId : null;
@@ -263,7 +250,7 @@ export default function BankMutationsTable() {
             "id, bank_id, amount_net, description, txn_at_opened, txn_at_final, is_assigned, assigned_username_snapshot, assigned_at, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
-        // "Pending DP" → filter txn_at_opened; "Depo dari PDP (assign)" → filter assigned_at saat mapping
+        // "Pending DP" → filter pakai txn_at_opened; "Depo dari PDP (assign)" → filter assigned_at saat mapping
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
         const { data, error } = await q;
@@ -348,7 +335,7 @@ export default function BankMutationsTable() {
     }
     setUname2BankName(unameMap);
 
-    // ===== mapping awal (tanpa start/finish; running dihitung terpisah) =====
+    // ===== mapping awal (Start/Finish diisi DI SINI) =====
     const result: Row[] = [];
 
     // DP (langsung)
@@ -365,6 +352,8 @@ export default function BankMutationsTable() {
         bankSub: `Depo dari ${uname} / ${bname}`,
         desc: "—",
         amount: +Number(r.amount_net || 0),
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
       });
     }
@@ -373,7 +362,7 @@ export default function BankMutationsTable() {
     for (const r of pdpResp) {
       if (!r.is_assigned || !r.assigned_at) continue;
       if (fCat && fCat !== "Depo") continue;
-      if (hasStart && r.assigned_at < sISO!) continue;
+      if (hasStart && r.assigned_at < sISO!) continue; // filter click via assigned_at
       if (hasFinish && r.assigned_at > eISO!) continue;
 
       const uname = r.assigned_username_snapshot ?? "-";
@@ -387,6 +376,8 @@ export default function BankMutationsTable() {
         bankSub: `Depo dari ${uname} / ${bname}`,
         desc: "—",
         amount: +Number(r.amount_net || 0),
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
       });
     }
@@ -403,18 +394,22 @@ export default function BankMutationsTable() {
         bankSub: "Pending Deposit",
         desc: r.description ?? "—",
         amount: +Number(r.amount_net || 0),
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
       });
     }
 
-    // WD (+ Biaya Transfer bila ada)
+    // WD (+ Biaya Transfer bila ada) — Opsi A
     for (const r of wdResp) {
       const uname = r.username_snapshot ?? "-";
       const bname = unameMap[uname] ?? "-";
       const gross = Number(r.amount_gross || 0);
       const fee = Number(r.transfer_fee_amount || 0);
+      const start = r.balance_before ?? null;
+      const wdFinish = r.balance_after ?? (start == null ? null : Number(start) - gross);
 
-      // WD
+      // Baris WD
       if (!fCat || fCat === "WD") {
         result.push({
           bankId: r.bank_id,
@@ -425,12 +420,16 @@ export default function BankMutationsTable() {
           bankSub: `WD dari ${uname} / ${bname}`,
           desc: "—",
           amount: -gross,
+          start,
+          finish: wdFinish,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
 
-      // Fee WD
+      // Baris Biaya Transfer (WD)
       if (fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
+        const feeStart = wdFinish;
+        const feeFinish = feeStart == null ? null : Number(feeStart) - fee;
         result.push({
           bankId: r.bank_id,
           tsClick: r.txn_at_opened,
@@ -440,20 +439,29 @@ export default function BankMutationsTable() {
           bankSub: `WD dari ${uname} / ${bname}`,
           desc: "—",
           amount: -fee,
+          start: feeStart,
+          finish: feeFinish,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
     }
 
-    // TT (Sesama CM) — tampil: TO → FEE → FROM (ID terbaru di atas)
+    // TT (Sesama CM) — tampil: TO → FEE → FROM (ID terbaru di atas) — Opsi A
     for (const r of ttResp) {
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
       const includeTo   = !bankIdFilter || r.bank_to_id   === bankIdFilter;
 
       const fromLabel = labelBank(r.bank_from_id);
       const toLabel   = labelBank(r.bank_to_id);
-      const gross     = Number(r.amount_gross || 0);
-      const fee       = Number(r.fee_amount || 0);
+
+      const gross = Number(r.amount_gross || 0);
+      const fee   = Number(r.fee_amount || 0);
+
+      const fromBefore = r.from_balance_before ?? null;
+      const fromAfter  = r.from_balance_after  ?? (fromBefore == null ? null : Number(fromBefore) - gross);
+
+      const toBefore   = r.to_balance_before   ?? null;
+      const toAfter    = r.to_balance_after    ?? (toBefore  == null ? null : Number(toBefore) + gross);
 
       // TO (kredit) — bank penerima
       if (includeTo && (!fCat || fCat === "Sesama CM")) {
@@ -463,16 +471,20 @@ export default function BankMutationsTable() {
           tsPickTop: r.from_txn_at,
           tsPickBottom: r.to_txn_at,
           cat: "Sesama CM",
-          bankTop: toLabel, // penerima
+          bankTop: toLabel, // penerima (FIX)
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
           desc: "—",
           amount: +gross,
+          start: toBefore,
+          finish: toAfter,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
 
       // Biaya Transfer (TT) — didebet di bank FROM
       if (includeFrom && fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
+        const feeStart  = fromAfter;
+        const feeFinish = feeStart == null ? null : Number(feeStart) - fee;
         result.push({
           bankId: r.bank_from_id,
           tsClick: r.created_at,
@@ -482,6 +494,8 @@ export default function BankMutationsTable() {
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
           desc: "—",
           amount: -fee,
+          start: feeStart,
+          finish: feeFinish,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
@@ -498,6 +512,8 @@ export default function BankMutationsTable() {
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
           desc: "—",
           amount: -gross,
+          start: fromBefore,
+          finish: fromAfter,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
@@ -515,6 +531,8 @@ export default function BankMutationsTable() {
         bankSub: r.description ?? "",
         desc: r.description ?? "—",
         amount: Number(r.amount_delta || 0),
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
       });
     }
@@ -531,6 +549,8 @@ export default function BankMutationsTable() {
         bankSub: r.description ?? "",
         desc: r.description ?? "—",
         amount: Number(r.amount || 0), // biasanya sudah negatif
+        start: r.balance_before ?? null,
+        finish: r.balance_after ?? null,
         by: r.created_by ? byMap[r.created_by] : "-",
       });
     }
@@ -543,15 +563,16 @@ export default function BankMutationsTable() {
         })
       : result;
 
-    // sort: terbaru paling atas; JS sort stabil → urutan TT tetap TO → FEE → FROM
+    // sort: terbaru paling atas — pakai tsClick (desc). Sort JS modern stabil → urutan TT tetap TO → FEE → FROM
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
+    // TIDAK ADA running pass. Start/Finish sudah benar di mapping.
     setRows(filtered);
     setLoading(false);
     setPage(1); // tampil dari halaman 1 setelah apply
   };
 
-  // jalankan apply setelah daftar bank (beserta saldo) sudah ter-load
+  // jalankan apply setelah daftar bank (label) sudah ter-load
   useEffect(() => {
     if (bankList.length) apply();
     // eslint-disable-next-line react-hooks/exhaustive-deps
