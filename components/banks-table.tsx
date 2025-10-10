@@ -17,6 +17,7 @@ type BankRow = {
   direct_fee_enabled: boolean;
   direct_fee_percent: number;
   balance: number;
+  metadata?: Record<string, any> | null;
 };
 
 type LeadLite = {
@@ -337,7 +338,7 @@ export default function BanksTable() {
     const { data, error } = await supabase
       .from("banks")
       .select("*")
-      .order("id", { ascending: false });
+      .eq("is_active", true); // hanya bank aktif
 
     setLoading(false);
     if (error) alert(error.message);
@@ -686,83 +687,104 @@ export default function BanksTable() {
               <tr>
                 <td colSpan={6}>Loading…</td>
               </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={6}>No data</td>
-              </tr>
-            ) : (
-              rows.map((r) => {
-                const rowBg =
-                  r.usage_type === "deposit"
-                    ? "bg-green-200"
-                    : r.usage_type === "withdraw"
-                    ? "bg-red-200"
-                    : "bg-white";
-                return (
-                  <tr key={r.id} className={`${rowBg}`}>
-                    <td>{r.id}</td>
-                    <td className="whitespace-normal break-words">
-                      <div className="font-semibold">
-                        [{r.bank_code}] {r.account_name}
-                      </div>
-                      <div className="text-xs">{r.account_no}</div>
-                    </td>
-                    <td className="text-center">{tenantName || "-"}</td>
-                    <td className="text-center">{formatAmount(r.balance)}</td>
-                    <td className="text-center">
-                      <div className="inline-flex items-center gap-2">
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Deposit"
-                          onClick={() => openDPFor(r)}
-                        >
-                          DP
-                        </button>
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Withdraw"
-                          onClick={() => openWDFor(r)}
-                        >
-                          WD
-                        </button>
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Pending Deposit"
-                          onClick={() => openPDPFor(r)}
-                        >
-                          PDP
-                        </button>
-                      </div>
-                    </td>
-                    <td className="text-center">
-                      <div className="inline-flex items-center gap-2">
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Interbank Transfer"
-                          onClick={() => openTTFor(r)}
-                        >
-                          TT
-                        </button>
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Bank Adjustment"
-                          onClick={() => openAdjFor(r)}
-                        >
-                          Adj
-                        </button>
-                        <button
-                          className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
-                          title="Biaya"
-                          onClick={() => openExpenseFor(r)}
-                        >
-                          Biaya
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+            ) : (() => {
+                // filter hanya ACTIVE, lalu urutkan berdasarkan metadata.display_order
+                const getOrder = (x: any) => {
+                  const v = x?.metadata?.display_order;
+                  const n = Number(v);
+                  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+                };
+
+                const data = [...rows]
+                  .filter((b) => b.is_active)                    // sembunyikan DELETED
+                  .sort((a, b) => {
+                    const ao = getOrder(a);
+                    const bo = getOrder(b);
+                    if (ao !== bo) return ao - bo;               // urut ASC
+                    return b.id - a.id;                          // fallback: ID terbaru dulu
+                  });
+
+                if (data.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={6}>No data</td>
+                    </tr>
+                  );
+                }
+
+                return data.map((r) => {
+                  const rowBg =
+                    r.usage_type === "deposit"
+                      ? "bg-green-200"
+                      : r.usage_type === "withdraw"
+                      ? "bg-red-200"
+                      : "bg-white";
+
+                  return (
+                    <tr key={r.id} className={rowBg}>
+                      <td>{r.id}</td>
+                      <td className="whitespace-normal break-words">
+                        <div className="font-semibold">
+                          [{r.bank_code}] {r.account_name}
+                        </div>
+                        <div className="text-xs">{r.account_no}</div>
+                      </td>
+                      <td className="text-center">{tenantName || "-"}</td>
+                      <td className="text-center">{formatAmount(r.balance)}</td>
+                      <td className="text-center">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Deposit"
+                            onClick={() => openDPFor(r)}
+                          >
+                            DP
+                          </button>
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Withdraw"
+                            onClick={() => openWDFor(r)}
+                          >
+                            WD
+                          </button>
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Pending Deposit"
+                            onClick={() => openPDPFor(r)}
+                          >
+                            PDP
+                          </button>
+                        </div>
+                      </td>
+                      <td className="text-center">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Interbank Transfer"
+                            onClick={() => openTTFor(r)}
+                          >
+                            TT
+                          </button>
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Bank Adjustment"
+                            onClick={() => openAdjFor(r)}
+                          >
+                            Adj
+                          </button>
+                          <button
+                            className="h-8 min-w-[52px] px-3 rounded bg-blue-600 text-white"
+                            title="Biaya"
+                            onClick={() => openExpenseFor(r)}
+                          >
+                            Biaya
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
           </tbody>
         </table>
       </div>
