@@ -401,30 +401,14 @@ export default function BankMutationsTable() {
       });
     }
 
-    // WD (+ Biaya Transfer bila ada) — Opsi A
+    // WD (+ Biaya Transfer bila ada)
     for (const r of wdResp) {
       const uname = r.username_snapshot ?? "-";
       const bname = unameMap[uname] ?? "-";
       const gross = Number(r.amount_gross || 0);
       const fee = Number(r.transfer_fee_amount || 0);
 
-      // Baris WD
-      if (!fCat || fCat === "WD") {
-        result.push({
-          bankId: r.bank_id,
-          tsClick: r.txn_at_opened,
-          tsPickTop: r.txn_at_final,
-          cat: "WD",
-          bankTop: labelBank(r.bank_id),
-          bankSub: `WD dari ${uname} / ${bname}`,
-          desc: "—",
-          amount: -gross,
-          affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
-        });
-      }
-
-      // Baris Biaya Transfer (WD)
+      // 1) Fee WD — tampil DI ATAS WD
       if (fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
         result.push({
           bankId: r.bank_id,
@@ -435,7 +419,21 @@ export default function BankMutationsTable() {
           bankSub: `WD dari ${uname} / ${bname}`,
           desc: "—",
           amount: -fee,
-          affectsBalance: true,
+          by: r.created_by ? byMap[r.created_by] : "-",
+        });
+      }
+
+      // 2) WD — tampil DI BAWAH Fee
+      if (!fCat || fCat === "WD") {
+        result.push({
+          bankId: r.bank_id,
+          tsClick: r.txn_at_opened,
+          tsPickTop: r.txn_at_final,
+          cat: "WD",
+          bankTop: labelBank(r.bank_id),
+          bankSub: `WD dari ${uname} / ${bname}`,
+          desc: "—",
+          amount: -gross,
           by: r.created_by ? byMap[r.created_by] : "-",
         });
       }
