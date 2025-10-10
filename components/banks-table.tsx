@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { formatAmount } from "@/lib/format";
+import { formatAmount } from "@/lib/format
+
+// ----- Role helpers (samakan dengan Sidebar) -----
+type AppRole = "admin" | "cs" | "viewer";
+type AnyRole = AppRole | "other";
 
 type BankRow = {
   id: number;
@@ -115,8 +119,19 @@ function toNegativeNumber(input: string) {
   return -Math.abs(n);
 }
 
+function normalizeRole(r?: string | null): AnyRole {
+  const v = (r || "").toLowerCase();
+  if (v === "admin") return "admin";
+  if (v === "cs" || v === "assops") return "cs";
+  if (v === "viewer" || v === "agent") return "viewer";
+  return "other";
+}
+
 export default function BanksTable() {
   const supabase = supabaseBrowser();
+
+  const [role, setRole] = useState<AnyRole>("other");
+  const [roleLoading, setRoleLoading] = useState(true);
 
   const [rows, setRows] = useState<BankRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -304,6 +319,23 @@ export default function BanksTable() {
     const open = () => setShowNew(true);
     document.addEventListener("open-bank-new", open as EventListener);
     return () => document.removeEventListener("open-bank-new", open as EventListener);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setRoleLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("user_id", user.id)
+          .single();
+        setRole(normalizeRole(prof?.role));
+      }
+      setRoleLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const load = async () => {
