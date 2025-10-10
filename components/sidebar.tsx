@@ -18,7 +18,7 @@ export default function Sidebar() {
     { label: "Bank Adjustment", href: "/bank-adjustments", enabled: true },
     { label: "Expenses", href: "/expenses", enabled: true },
     { label: "Bank Mutation", href: "/bank-mutation", enabled: true },
-    { label: "Bank Management", href: "#", enabled: false },
+    { label: "Bank Management", href: "/bank-management", enabled: true },
     { label: "Credit Topup", href: "#", enabled: false },
     { label: "Credit Adjustment", href: "#", enabled: false },
     { label: "Credit Mutation", href: "#", enabled: false },
