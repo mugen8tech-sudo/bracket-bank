@@ -39,7 +39,7 @@ export default function BankManagementPage() {
 
   // ===== Guard: hanya Admin =====
   const [authorized, setAuthorized] = useState<"loading"|"ok"|"no">("loading");
-  const [tenantName, setTenantName] = useState<string>("");
+  const [tenantName, setTenantName] = useState<string | null>(null);
 
   // ===== Data banks =====
   const [rows, setRows] = useState<Bank[]>([]);
@@ -85,7 +85,7 @@ export default function BankManagementPage() {
           .select("name")
           .eq("id", prof.tenant_id)
           .maybeSingle();
-        setTenantName(tenant?.name ?? "");
+        setTenantName(tenant?.name ?? null);
       }
 
       await loadBanks(); // muat data awal
@@ -256,9 +256,7 @@ export default function BankManagementPage() {
                       <div className="text-xs">{r.account_no}</div>
                     </td>
                     {/* Website: ambil dari join tenants(name), fallback ke tenantName */}
-                    <td className="p-2 border text-center">
-                      {(r.tenants?.name && r.tenants.name.trim()) || (tenantName && tenantName.trim()) || "-"}
-                    </td>
+                    <td className="p-2 border text-center">{r.tenants?.name ?? tenantName ?? "-"}</td>
                     <td className="p-2 border text-center">{formatAmount(r.balance)}</td>
                     <td className="p-2 border text-center">{r.is_active ? "ACTIVE" : "DELETED"}</td>
                     <td className="p-2 border">
