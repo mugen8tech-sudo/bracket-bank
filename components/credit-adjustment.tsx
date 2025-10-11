@@ -80,6 +80,7 @@ type Row = {
   created_at: string;     // waktu transaksi yg dipilih (di modal)
   submitted_at: string;   // waktu submit nyata
   created_by: string | null;
+  created_by_name: string | null;
 };
 
 const PAGE_SIZE = 25;
@@ -182,7 +183,7 @@ export default function CreditAdjustment() {
     let q = supabase
       .from("tenant_ledger")
       .select(
-        "id, tenant_id, delta_credit, description, is_bonus, created_at, submitted_at, created_by",
+        "id, tenant_id, delta_credit, description, is_bonus, created_at, submitted_at, created_by_name",
         { count: "exact" }
       )
       .eq("ref_type", "credit_adjustment")
@@ -211,26 +212,6 @@ export default function CreditAdjustment() {
     setRows(list);
     setTotal(count ?? 0);
     setPage(pageToLoad);
-
-    // ambil nama "By"
-    const ids = [
-      ...new Set(
-        list
-          .map(r => r.created_by)
-          .filter((v): v is string => typeof v === "string" && v.length > 0)
-      ),
-    ];
-    if (ids.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", ids);
-      const map: Record<string,string> = {};
-      (profs ?? []).forEach((p: any) => { map[p.user_id] = p.full_name || p.user_id; });
-      setNameBy(map);
-    } else {
-      setNameBy({});
-    }
   };
 
   /* apply filter */
@@ -399,7 +380,7 @@ export default function CreditAdjustment() {
                   <td>{String(r.is_bonus)}</td>
                   <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                   <td>{new Date(r.submitted_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
-                  <td>{r.created_by ? (nameBy[r.created_by] ?? r.created_by) : "-"}</td>
+                  <td className="text-center">{r.created_by_name ?? r.created_by ?? "-"}</td>
                 </tr>
               ))
             )}
