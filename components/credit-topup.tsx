@@ -155,7 +155,7 @@ export default function CreditTopup() {
   }, []);
 
   /* ================= Loader ================= */
-  const load = async (pageToLoad = page) => {
+  const load = async (pageToLoad: number = page) => {
     if (!tenantId) return;
     setLoading(true);
 
@@ -373,23 +373,21 @@ export default function CreditTopup() {
           </button>
 
           {getPageList().map((it, idx) =>
-            it === "truncate" ? (
+            typeof it === "number" ? (
+              <button
+                key={`p-${it}`}
+                onClick={() => load(it)}                    // sekarang 'it' dipersempit ke number
+                className={`px-3 py-1 rounded border ${page === it ? "bg-blue-600 text-white" : "bg-white"}`}
+              >
+                {it}
+              </button>
+            ) : (
               <span
                 key={`t-${idx}`}
                 className="px-3 py-1 rounded border bg-white text-gray-500"
               >
                 Truncate
               </span>
-            ) : (
-              <button
-                key={it}
-                onClick={() => load(it)}
-                className={`px-3 py-1 rounded border ${
-                  page === it ? "bg-blue-600 text-white" : "bg-white"
-                }`}
-              >
-                {it}
-              </button>
             )
           )}
 
