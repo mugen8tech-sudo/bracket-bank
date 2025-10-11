@@ -56,6 +56,7 @@ type TopupRow = {
   tenant_id: string;
   delta_credit: number;
   note: string | null;
+  description: string | null;   // ⬅️ baru, tampil di tabel
   created_at: string;     // timestamptz
   created_by: string | null;
 };
@@ -165,7 +166,7 @@ export default function CreditTopup() {
     // Ambil topup ledger untuk tenant ini
     const { data, error, count } = await supabase
       .from("tenant_ledger")
-      .select("id, tenant_id, delta_credit, note, created_at, created_by", {
+      .select("id, tenant_id, delta_credit, note, description, created_at, created_by", {
         count: "exact",
       })
       .eq("tenant_id", tenantId)
@@ -339,7 +340,7 @@ export default function CreditTopup() {
                   <td>{r.id}</td>
                   <td>{formatAmount(r.delta_credit)}</td>
                   <td className="whitespace-normal break-words min-w-[320px]">
-                    {r.note ?? "-"}
+                    {r.description ?? "-"}
                   </td>
                   <td>
                     {new Date(r.created_at).toLocaleString("id-ID", {
