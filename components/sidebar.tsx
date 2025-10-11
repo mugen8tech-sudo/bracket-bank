@@ -82,7 +82,7 @@ export default function Sidebar() {
     { label: "Credit Topup", href: "/credit-topup", enabled: true, roles: ["admin", "cs"] },
 
     // Placeholder (belum aktif) – visible utk admin saja biar eksplisit
-    { label: "Credit Adjustment", href: "#", enabled: false, roles: ["admin"] },
+    { label: "Credit Adjustment", href: "/credit-adjustment", enabled: true, roles: ["admin", "cs"] },
     { label: "Credit Mutation", href: "#", enabled: false, roles: ["admin"] },
     { label: "Credit Report", href: "#", enabled: false, roles: ["admin"] },
 
