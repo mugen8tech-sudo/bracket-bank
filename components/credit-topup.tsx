@@ -185,16 +185,23 @@ export default function CreditTopup() {
     setPage(pageToLoad);
 
     // Ambil nama pembuat (By) sekali jalan
-    const ids = Array.from(
-      new Set(list.map((r) => r.created_by).filter(Boolean)) as string[]
-    );
-    if (ids.length) {
+    const ids = [
+      ...new Set(
+        list
+          .map((r) => r.created_by)
+          .filter((v): v is string => typeof v === "string" && v.length > 0)
+      ),
+    ];
+
+    if (ids.length > 0) {
       const { data: profs } = await supabase
         .from("profiles")
         .select("user_id, full_name")
         .in("user_id", ids);
       const map: Record<string, string> = {};
-      (profs ?? []).forEach((p: any) => (map[p.user_id] = p.full_name || p.user_id));
+      (profs ?? []).forEach((p: any) => {
+        map[p.user_id] = p.full_name || p.user_id;
+      });
       setNameBy(map);
     } else {
       setNameBy({});
