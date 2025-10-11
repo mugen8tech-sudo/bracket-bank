@@ -122,7 +122,7 @@ export default function DepositsTable() {
     if (uids.length) {
       const { data: pf } = await supabase
         .from("profiles")
-        .select("user_id, full_name")
+        .select("user_id, full_name, created_by_name")
         .in("user_id", uids);
       const map: Record<string, string> = {};
       (pf as ProfileLite[] | null)?.forEach((p) => {
