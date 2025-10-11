@@ -16,7 +16,7 @@ type TT = {
   description: string | null;
   created_at: string;
   created_by: string | null;
-  created_by_name: string | null;
+  created_by_name: string | null; // <-- computed column
 };
 
 type BankLite = {
@@ -26,8 +26,6 @@ type BankLite = {
   account_no: string;
 };
 
-type ProfileLite = { user_id: string; full_name: string | null };
-
 const PAGE_SIZE = 25;
 
 export default function InterbankTransfersTable() {
@@ -35,7 +33,6 @@ export default function InterbankTransfersTable() {
 
   const [rows, setRows] = useState<TT[]>([]);
   const [banks, setBanks] = useState<BankLite[]>([]);
-  const [byMap, setByMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   const [page, setPage] = useState(1);
@@ -61,18 +58,18 @@ export default function InterbankTransfersTable() {
   const load = async (pageToLoad = page) => {
     setLoading(true);
 
-    // load banks (untuk label)
+    // bank list (label)
     const { data: bankData } = await supabase
       .from("banks")
       .select("id, bank_code, account_name, account_no");
 
-    // query interbank transfers
+    // interbank transfers
     const from = (pageToLoad - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
     let q = supabase
       .from("interbank_transfers")
-      .select("*", { count: "exact" })
+      .select("*, created_by_name", { count: "exact" }) // <-- minta computed col
       .order("created_at", { ascending: false })
       .range(from, to);
 
@@ -87,26 +84,10 @@ export default function InterbankTransfersTable() {
       return;
     }
 
-    // ambil profile 'by'
-    const ids = Array.from(
-      new Set((data ?? []).map((r) => r.created_by_name).filter(Boolean) as string[])
-    );
-    let map: Record<string, string> = {};
-    if (ids.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, created_by_name")
-        .in("user_id", ids);
-      for (const p of (profs ?? []) as ProfileLite[]) {
-        map[p.user_id] = p.full_name ?? p.user_id?.slice(0, 8) ?? "-";
-      }
-    }
-
     setRows((data as TT[]) ?? []);
     setTotal(count ?? 0);
     setPage(pageToLoad);
     setBanks((bankData as BankLite[]) ?? []);
-    setByMap(map);
   };
 
   useEffect(() => {
@@ -131,11 +112,11 @@ export default function InterbankTransfersTable() {
       <div className="overflow-auto rounded border bg-white">
         <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
           <thead>
-            {/* FILTERS — 1 sel per kolom (grid rapi) */}
+            {/* FILTERS */}
             <tr className="filters">
               <th className="w-20"></th>                 {/* ID */}
-              <th className=""></th>                      {/* Bank Asal */}
-              <th className=""></th>                      {/* Bank Tujuan */}
+              <th></th>                                   {/* Bank Asal */}
+              <th></th>                                   {/* Bank Tujuan */}
               <th className="w-36"></th>                  {/* Amount */}
               <th className="w-52">                       {/* Tgl (atas-bawah) */}
                 <div className="flex flex-col gap-1">
@@ -171,12 +152,12 @@ export default function InterbankTransfersTable() {
                   <td>{r.id}</td>
                   <td className="whitespace-normal break-words">{bankLabel(r.bank_from_id)}</td>
                   <td className="whitespace-normal break-words">{bankLabel(r.bank_to_id)}</td>
-                  <td>{formatAmount(r.amount_gross)}</td>
-                  <td>
+                  <td className="text-center">{formatAmount(r.amount_gross)}</td>
+                  <td className="text-center">
                     {new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
                   </td>
-                  <td>{r.created_by_name ?? r.created_by ?? "-"}</td>
-                  <td>
+                  <td className="text-center">{r.created_by_name ?? r.created_by ?? "-"}</td>
+                  <td className="text-center">
                     <a href={`/interbank-transfer/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a>
                   </td>
                 </tr>
