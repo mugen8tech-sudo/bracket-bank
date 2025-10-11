@@ -1,14 +1,15 @@
+// header.tsx
 import { supabaseServer } from "@/lib/supabase-server";
+import UserMenu from "./user-menu"; // letakkan user-menu.tsx di folder yang sama, atau sesuaikan path
 
 export default async function Header() {
   const supabase = supabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
 
   let fullName = "User";
-  let brand = "—"; // fallback jika tenant tidak ditemukan
+  let brand = "—";
 
   if (user) {
-    // ambil profil (termasuk tenant_id)
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name, tenant_id")
@@ -17,7 +18,6 @@ export default async function Header() {
 
     fullName = profile?.full_name ?? user.email ?? "User";
 
-    // lookup tenant → pakai slug kalau ada, else name
     if (profile?.tenant_id) {
       const { data: tenant } = await supabase
         .from("tenants")
@@ -35,14 +35,9 @@ export default async function Header() {
         <div className="font-semibold">
           Bracket BANK — <span className="text-sm text-gray-500">{brand}</span>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-700">{fullName}</span>
-          <form action="/api/auth/signout" method="post">
-            <button className="rounded bg-gray-100 hover:bg-gray-200 px-3 py-1 text-sm">
-              Sign out
-            </button>
-          </form>
-        </div>
+
+        {/* Menu user di kanan */}
+        <UserMenu fullName={fullName} />
       </div>
     </header>
   );
