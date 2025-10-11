@@ -95,7 +95,7 @@ export default function InterbankTransfersTable() {
     if (ids.length) {
       const { data: profs } = await supabase
         .from("profiles")
-        .select("user_id, full_name")
+        .select("user_id, full_name, created_by_name")
         .in("user_id", ids);
       for (const p of (profs ?? []) as ProfileLite[]) {
         map[p.user_id] = p.full_name ?? p.user_id?.slice(0, 8) ?? "-";
