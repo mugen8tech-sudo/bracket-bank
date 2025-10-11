@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { formatAmount } from "@/lib/format";
 
-/* ===== Roles (konsisten dengan Sidebar) ===== */
+/* ===== Roles (konsisten dgn Sidebar) ===== */
 type Role = "admin" | "cs" | "viewer" | "other";
 const normalizeRole = (r?: string | null): Role => {
   const v = (r || "").toLowerCase();
@@ -15,9 +15,11 @@ const normalizeRole = (r?: string | null): Role => {
 };
 
 /* ===== Amount helpers (adopsi Banks: live grouping + signed) ===== */
+// Normalisasi semua variasi tanda minus ke '-' (ASCII)
 function normalizeMinus(raw: string) {
   return raw.replace(/\u2212|\u2013|\u2014/g, "-");
 }
+// Live grouping (2 desimal) untuk angka positif
 function formatWithGroupingLive(raw: string) {
   let cleaned = raw.replace(/,/g, "").replace(/[^\d.]/g, "");
   const firstDot = cleaned.indexOf(".");
@@ -36,6 +38,7 @@ function formatWithGroupingLive(raw: string) {
   }
   return intGrouped;
 }
+// Menerima minus di depan/akhir lalu diformat
 function formatWithGroupingLiveSigned(raw: string) {
   let s = normalizeMinus(raw.trim());
   const isNeg = s.startsWith("-") || s.endsWith("-");
@@ -47,7 +50,7 @@ function toNumber(input: string) {
   let c = (input || "0").replace(/,/g, "");
   if (c.endsWith(".")) c = c.slice(0, -1);
   const n = Number(c);
-  return isNaN(n) ? 0 : n;
+  return Number.isNaN(n) ? 0 : n;
 }
 function toNumberSigned(input: string) {
   let s = normalizeMinus(input.trim());
@@ -74,7 +77,8 @@ type Row = {
   delta_credit: number;
   description: string | null;
   is_bonus: boolean;
-  created_at: string;
+  created_at: string;     // waktu transaksi yg dipilih (di modal)
+  submitted_at: string;   // waktu submit nyata
   created_by: string | null;
 };
 
@@ -86,6 +90,7 @@ export default function CreditAdjustment() {
   /* tenant & role */
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [brand, setBrand] = useState("TECH");
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [role, setRole] = useState<Role>("other");
   const [booting, setBooting] = useState(true);
 
@@ -93,7 +98,6 @@ export default function CreditAdjustment() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [nameBy, setNameBy] = useState<Record<string, string>>({});
-  const [totalAmount, setTotalAmount] = useState<number>(0);
 
   /* pagination */
   const [page, setPage] = useState(1);
@@ -132,7 +136,7 @@ export default function CreditAdjustment() {
     [role, submitting]
   );
 
-  /* bootstrap: tenant + role */
+  /* bootstrap: tenant + role + credit */
   useEffect(() => {
     (async () => {
       setBooting(true);
@@ -150,21 +154,37 @@ export default function CreditAdjustment() {
         setTenantId(prof.tenant_id);
         const { data: tenant } = await supabase
           .from("tenants")
-          .select("slug, name")
+          .select("slug, name, credit_balance")
           .eq("id", prof.tenant_id)
           .single();
         setBrand(tenant?.slug || tenant?.name || "—");
+        setCreditBalance(
+          typeof tenant?.credit_balance === "number" ? tenant!.credit_balance : null
+        );
       }
       setBooting(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const refreshCredit = async () => {
+    if (!tenantId) return;
+    const { data: t } = await supabase
+      .from("tenants")
+      .select("credit_balance")
+      .eq("id", tenantId)
+      .single();
+    if (typeof t?.credit_balance === "number") setCreditBalance(t.credit_balance);
+  };
+
   /* query builder */
   const buildQuery = () => {
     let q = supabase
       .from("tenant_ledger")
-      .select("id, tenant_id, delta_credit, description, is_bonus, created_at, created_by", { count: "exact" })
+      .select(
+        "id, tenant_id, delta_credit, description, is_bonus, created_at, submitted_at, created_by",
+        { count: "exact" }
+      )
       .eq("ref_type", "credit_adjustment")
       .order("created_at", { ascending: false });
 
@@ -206,35 +226,22 @@ export default function CreditAdjustment() {
         .select("user_id, full_name")
         .in("user_id", ids);
       const map: Record<string,string> = {};
-      (profs ?? []).forEach((p:any) => { map[p.user_id] = p.full_name || p.user_id; });
+      (profs ?? []).forEach((p: any) => { map[p.user_id] = p.full_name || p.user_id; });
       setNameBy(map);
     } else {
       setNameBy({});
     }
   };
 
-  /* load total */
-  const loadTotal = async () => {
-    if (!tenantId) return;
-    const { data, error } = await supabase.rpc("get_credit_adjustment_total", {
-      p_start: startIsoJakarta(fStart),
-      p_finish: endIsoJakarta(fFinish),
-      p_is_bonus: fBonus === "all" ? null : fBonus === "true",
-    });
-    if (error) { console.error(error); return; }
-    setTotalAmount(Number(data ?? 0));
-  };
-
   /* apply filter */
   const applyFilters = (e?: React.FormEvent) => {
     e?.preventDefault();
     load(1);
-    loadTotal();
   };
 
   /* initial load after tenant resolved */
   useEffect(() => {
-    if (tenantId) { load(1); loadTotal(); }
+    if (tenantId) load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
@@ -283,7 +290,7 @@ export default function CreditAdjustment() {
       if (error) { alert(error.message); return; }
 
       await load(1);
-      await loadTotal();
+      await refreshCredit();
       setShowForm(false);
       alert("Credit Adjustment berhasil disimpan.");
     } finally {
@@ -298,7 +305,7 @@ export default function CreditAdjustment() {
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
           Credit Adjustments — {brand} &nbsp;|&nbsp;
-          <b>{formatAmount(totalAmount)}</b>
+          Credit: <b>{creditBalance != null ? formatAmount(creditBalance) : "—"}</b>
         </div>
         <button
           type="button"
@@ -319,13 +326,13 @@ export default function CreditAdjustment() {
 
       {/* Table */}
       <div className="overflow-auto rounded border bg-white">
-        <table className="table-grid min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
+        <table className="table-grid min-w-[1100px]" style={{ borderCollapse: "collapse" }}>
           <thead>
             {/* Row FILTERS (di atas header) */}
             <tr className="filters">
-              <th /> {/* ID: tidak ada filter */}
-              <th /> {/* Amount: tidak ada filter */}
-              <th /> {/* Description: tidak ada filter */}
+              <th /> {/* ID: no filter */}
+              <th /> {/* Amount: no filter */}
+              <th /> {/* Description: no filter */}
               <th>
                 <select
                   className="border rounded px-2 py-1 w-full"
@@ -355,6 +362,7 @@ export default function CreditAdjustment() {
                   />
                 </div>
               </th>
+              <th /> {/* Submitted: no filter */}
               <th className="whitespace-nowrap">
                 <button
                   onClick={applyFilters}
@@ -371,16 +379,17 @@ export default function CreditAdjustment() {
               <th className="text-left w-48">Amount</th>
               <th className="text-left min-w-[340px]">Description</th>
               <th className="text-left w-28">Is Bonus</th>
-              <th className="text-left w-56">Tgl</th>
+              <th className="text-left w-56">Tgl</th>          {/* created_at (dipilih) */}
+              <th className="text-left w-56">Submitted</th>    {/* submitted_at */}
               <th className="text-left w-48">By</th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
-              <tr><td colSpan={6}>Loading…</td></tr>
+              <tr><td colSpan={7}>Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6}>No data</td></tr>
+              <tr><td colSpan={7}>No data</td></tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
@@ -388,9 +397,8 @@ export default function CreditAdjustment() {
                   <td>{formatAmount(r.delta_credit)}</td>
                   <td className="whitespace-normal break-words min-w-[340px]">{r.description ?? "-"}</td>
                   <td>{String(r.is_bonus)}</td>
-                  <td>
-                    {new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
-                  </td>
+                  <td>{new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
+                  <td>{new Date(r.submitted_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
                   <td>{r.created_by ? (nameBy[r.created_by] ?? r.created_by) : "-"}</td>
                 </tr>
               ))
