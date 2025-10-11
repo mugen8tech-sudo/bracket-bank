@@ -59,6 +59,7 @@ type TopupRow = {
   description: string | null;   // ⬅️ baru, tampil di tabel
   created_at: string;     // timestamptz
   created_by: string | null;
+  created_by_name: string | null;
 };
 
 const PAGE_SIZE = 25;
@@ -166,7 +167,7 @@ export default function CreditTopup() {
     // Ambil topup ledger untuk tenant ini
     const { data, error, count } = await supabase
       .from("tenant_ledger")
-      .select("id, tenant_id, delta_credit, note, description, created_at, created_by", {
+      .select("id, tenant_id, delta_credit, note, description, created_at, created_by_name", {
         count: "exact",
       })
       .eq("tenant_id", tenantId)
@@ -184,29 +185,6 @@ export default function CreditTopup() {
     setRows(list);
     setTotal(count ?? 0);
     setPage(pageToLoad);
-
-    // Ambil nama pembuat (By) sekali jalan
-    const ids = [
-      ...new Set(
-        list
-          .map((r) => r.created_by)
-          .filter((v): v is string => typeof v === "string" && v.length > 0)
-      ),
-    ];
-
-    if (ids.length > 0) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", ids);
-      const map: Record<string, string> = {};
-      (profs ?? []).forEach((p: any) => {
-        map[p.user_id] = p.full_name || p.user_id;
-      });
-      setNameBy(map);
-    } else {
-      setNameBy({});
-    }
 
     setLoading(false);
   };
@@ -347,7 +325,7 @@ export default function CreditTopup() {
                       timeZone: "Asia/Jakarta",
                     })}
                   </td>
-                  <td>{r.created_by ? nameBy[r.created_by] ?? r.created_by : "-"}</td>
+                  <td className="text-center">{r.created_by_name ?? r.created_by ?? "-"}</td>
                 </tr>
               ))
             )}
