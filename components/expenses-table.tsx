@@ -15,6 +15,7 @@ type ExpenseRow = {
   txn_at_final: string;           // waktu transaksi di bank (optional dipakai di detail)
   created_at: string;             // waktu submit (dipakai untuk kolom Tgl)
   created_by: string | null;
+  created_by_name: string | null;
 };
 
 type BankLite = {
@@ -90,7 +91,7 @@ export default function ExpensesTable() {
 
     let q = supabase
       .from("bank_expenses")
-      .select("*", { count: "exact" })
+      .select("*, created_by_name", { count: "exact" })
       .order("txn_at_final", { ascending: false })
       .range(from, to);
 
@@ -107,26 +108,10 @@ export default function ExpensesTable() {
       return;
     }
 
-    // who map
-    const ids = Array.from(
-      new Set(((data ?? []) as ExpenseRow[]).map((r) => r.created_by).filter(Boolean) as string[])
-    );
-    let map: Record<string, string> = {};
-    if (ids.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", ids);
-      for (const p of (profs ?? []) as ProfileLite[]) {
-        map[p.user_id] = p.full_name ?? p.user_id?.slice(0, 8) ?? "-";
-      }
-    }
-
     setRows((data as ExpenseRow[]) ?? []);
     setTotal(count ?? 0);
     setPage(pageToLoad);
     setBanks((bankData as BankLite[]) ?? []);
-    setByMap(map);
     setLoading(false);
   };
 
@@ -229,11 +214,7 @@ export default function ExpensesTable() {
                       timeZone: "Asia/Jakarta",
                     })}
                   </td>
-                  <td>
-                    {r.created_by
-                      ? byMap[r.created_by] ?? r.created_by.slice(0, 8)
-                      : "-"}
-                  </td>
+                  <td className="text-center">{r.created_by_name ?? r.created_by ?? "-"}</td>
                   <td>
                     <a
                       href={`/expenses/${r.id}`}
