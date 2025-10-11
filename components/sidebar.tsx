@@ -84,7 +84,7 @@ export default function Sidebar() {
     // Placeholder (belum aktif) – visible utk admin saja biar eksplisit
     { label: "Credit Adjustment", href: "/credit-adjustment", enabled: true, roles: ["admin", "cs"] },
     { label: "Credit Mutation", href: "/credit-mutation", enabled: true, roles: ["admin", "cs"] },
-    { label: "Credit Report", href: "#", enabled: false, roles: ["admin"] },
+    { label: "Credit Report", href: "/credit-report", enabled: true, roles: ["admin", "cs"] },
 
     // Placeholder – hanya ADMIN
     { label: "User Management", href: "#", enabled: false, roles: ["admin"] },
