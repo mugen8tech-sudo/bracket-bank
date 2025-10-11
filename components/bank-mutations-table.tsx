@@ -120,7 +120,7 @@ const toIsoEndJakarta = (d: string) =>
   new Date(`${d}T23:59:59.999+07:00`).toISOString();
 
 function fmtDateJak(s?: string | null) {
-  if (!s) return "â€”";
+  if (!s) return "-";
   return new Date(s).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" });
 }
 
@@ -340,7 +340,7 @@ export default function BankMutationsTable() {
         cat: "Depo",
         bankTop: labelBank(r.bank_id),
         bankSub: `Depo dari ${uname} / ${bname}`,
-        desc: "â€”",
+        desc: "-",
         amount: +Number(r.amount_net || 0),
         affectsBalance: true,
         by: r.created_by_name ?? "-",
@@ -363,7 +363,7 @@ export default function BankMutationsTable() {
         cat: "Depo",
         bankTop: labelBank(r.bank_id),
         bankSub: `Depo dari ${uname} / ${bname}`,
-        desc: "â€”",
+        desc: "-",
         amount: +Number(r.amount_net || 0),
         affectsBalance: true,
         by: r.created_by_name ?? "-",
@@ -380,7 +380,7 @@ export default function BankMutationsTable() {
         cat: "Pending DP",
         bankTop: labelBank(r.bank_id),
         bankSub: "Pending Deposit",
-        desc: r.description ?? "â€”",
+        desc: r.description ?? "-",
         amount: +Number(r.amount_net || 0),
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
@@ -389,7 +389,7 @@ export default function BankMutationsTable() {
       });
     }
 
-    // WD (+ Biaya Transfer bila ada) â€” Opsi A
+    // WD (+ Biaya Transfer bila ada) - Opsi A
     for (const r of wdResp) {
       const uname = r.username_snapshot ?? "-";
       const bname = unameMap[uname] ?? "-";
@@ -405,7 +405,7 @@ export default function BankMutationsTable() {
           cat: "Biaya Transfer",
           bankTop: labelBank(r.bank_id),
           bankSub: `WD dari ${uname} / ${bname}`,
-          desc: "â€”",
+          desc: "-",
           amount: -fee,
           affectsBalance: true,
           by: r.created_by_name ?? "-",
@@ -421,7 +421,7 @@ export default function BankMutationsTable() {
           cat: "WD",
           bankTop: labelBank(r.bank_id),
           bankSub: `WD dari ${uname} / ${bname}`,
-          desc: "â€”",
+          desc: "-",
           amount: -gross,
           affectsBalance: true,
           by: r.created_by_name ?? "-",
@@ -429,7 +429,7 @@ export default function BankMutationsTable() {
       }
     }
 
-    // TT (Sesama CM) â€” tampil: TO â†’ FEE â†’ FROM (ID terbaru di atas) â€” Opsi A
+    // TT (Sesama CM) - tampil: TO â†’ FEE â†’ FROM (ID terbaru di atas) - Opsi A
     for (const r of ttResp) {
       const includeFrom = !bankIdFilter || r.bank_from_id === bankIdFilter;
       const includeTo   = !bankIdFilter || r.bank_to_id   === bankIdFilter;
@@ -440,7 +440,7 @@ export default function BankMutationsTable() {
       const gross = Number(r.amount_gross || 0);
       const fee   = Number(r.fee_amount || 0);
 
-      // TO (kredit) â€” bank penerima
+      // TO (kredit) - bank penerima
       if (includeTo && (!fCat || fCat === "Sesama CM")) {
         result.push({
           bankId: r.bank_to_id,
@@ -450,14 +450,14 @@ export default function BankMutationsTable() {
           cat: "Sesama CM",
           bankTop: toLabel, // penerima
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
-          desc: "â€”",
+          desc: "-",
           amount: +gross,
           affectsBalance: true,
           by: r.created_by_name ?? "-",
         });
       }
 
-      // Biaya Transfer (TT) â€” didebet di bank FROM
+      // Biaya Transfer (TT) - didebet di bank FROM
       if (includeFrom && fee > 0 && (!fCat || fCat === "Biaya Transfer")) {
         result.push({
           bankId: r.bank_from_id,
@@ -466,7 +466,7 @@ export default function BankMutationsTable() {
           cat: "Biaya Transfer",
           bankTop: fromLabel,
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
-          desc: "â€”",
+          desc: "-",
           amount: -fee,
           affectsBalance: true,
           by: r.created_by_name ?? "-",
@@ -483,7 +483,7 @@ export default function BankMutationsTable() {
           cat: "Sesama CM",
           bankTop: fromLabel,
           bankSub: `Transfer dari ${fromLabel} ke ${toLabel}`,
-          desc: "â€”",
+          desc: "-",
           amount: -gross,
           affectsBalance: true,
           by: r.created_by_name ?? "-",
@@ -501,7 +501,7 @@ export default function BankMutationsTable() {
         cat: "Adjustment",
         bankTop: labelBank(r.bank_id),
         bankSub: r.description ?? "",
-        desc: r.description ?? "â€”",
+        desc: r.description ?? "-",
         amount: Number(r.amount_delta || 0),
         affectsBalance: true,
         by: r.created_by_name ?? "-",
@@ -518,7 +518,7 @@ export default function BankMutationsTable() {
         cat: "Expense",
         bankTop: labelBank(r.bank_id),
         bankSub: r.description ?? "",
-        desc: r.description ?? "â€”",
+        desc: r.description ?? "-",
         amount: Number(r.amount || 0), // biasanya sudah negatif
         affectsBalance: true,
         by: r.created_by_name ?? "-",
@@ -533,7 +533,7 @@ export default function BankMutationsTable() {
         })
       : result;
 
-    // sort: terbaru paling atas â€” pakai tsClick (desc). Sort stabil â†’ urutan TT tetap TO â†’ FEE â†’ FROM
+    // sort: terbaru paling atas - pakai tsClick (desc). Sort stabil â†’ urutan TT tetap TO â†’ FEE â†’ FROM
     filtered.sort((a, b) => (a.tsClick > b.tsClick ? -1 : a.tsClick < b.tsClick ? 1 : 0));
 
     /* ============================================================
@@ -791,10 +791,10 @@ export default function BankMutationsTable() {
                         </>
                       )}
                     </td>
-                    <td className="whitespace-normal break-words">{r.desc ?? "â€”"}</td>
+                    <td className="whitespace-normal break-words">{r.desc ?? "-"}</td>
                     <td>{formatAmount(r.amount)}</td>
-                    <td>{r.start == null ? "â€”" : formatAmount(r.start)}</td>
-                    <td>{r.finish == null ? "â€”" : formatAmount(r.finish)}</td>
+                    <td>{r.start == null ? "-" : formatAmount(r.start)}</td>
+                    <td>{r.finish == null ? "-" : formatAmount(r.finish)}</td>
                     <td>{r.by ?? "-"}</td>
                   </tr>
                 );
