@@ -12,6 +12,7 @@ type BA = {
   description: string | null;
   created_at: string;
   created_by: string | null;
+  created_by_name: string | null;
 };
 type BankLite = { id:number; bank_code:string; account_name:string; account_no:string };
 type ProfileLite = { user_id: string; full_name: string | null };
@@ -52,7 +53,7 @@ export default function BankAdjustmentsTable(){
 
     let q = supabase
       .from("bank_adjustments")
-      .select("*", { count: "exact" })
+      .select("*, created_by_name", { count: "exact" })
       .order("txn_at_final", { ascending: false })
       .range(from, to);
 
@@ -63,24 +64,10 @@ export default function BankAdjustmentsTable(){
     setLoading(false);
     if (error) { alert(error.message); return; }
 
-    // map created_by -> full_name (pola Deposits/Interbank)
-    const uids = Array.from(new Set((data ?? []).map(r=>r.created_by).filter(Boolean) as string[]));
-    let map: Record<string,string> = {};
-    if (uids.length) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", uids);
-      for (const p of (profs ?? []) as ProfileLite[]) {
-        map[p.user_id] = p.full_name ?? p.user_id?.slice(0,8) ?? "-";
-      }
-    }
-
     setRows((data as BA[]) ?? []);
     setTotal(count ?? 0);
     setPage(pageToLoad);
     setBanks((bankData as BankLite[]) ?? []);
-    setByMap(map);
   };
 
   useEffect(()=>{ load(1); /* eslint-disable-next-line */ }, []);
@@ -138,7 +125,7 @@ export default function BankAdjustmentsTable(){
                 <td>{formatAmount(r.amount_delta)}</td>
                 <td><div className="whitespace-normal break-words">{r.description ?? ""}</div></td>
                 <td>{new Date(r.txn_at_final).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}</td>
-                <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
+                <td className="text-center">{r.created_by_name ?? r.created_by ?? "-"}</td>
                 <td><a href={`/bank-adjustments/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a></td>
               </tr>
             ))}
