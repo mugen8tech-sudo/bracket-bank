@@ -220,7 +220,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("deposits")
           .select(
-            "id, bank_id, amount_net, username_snapshot, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_net, username_snapshot, bank_name, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
@@ -228,6 +228,8 @@ export default function BankMutationsTable() {
         q = q.not("lead_bank_snapshot", "is", null).not("lead_accno_snapshot", "is", null);
         const { data, error } = await q;
         if (error) console.error(error);
+        // pastikan bank_name selalu ada
+        for (const it of (data ?? []) as any[]) if (!it.bank_name) it.bank_name = "-";
         return (data as DepositRow[]) ?? [];
       })(),
       // Withdrawals (+ transfer_fee_amount)
@@ -235,13 +237,14 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("withdrawals")
           .select(
-            "id, bank_id, amount_gross, transfer_fee_amount, username_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_gross, transfer_fee_amount, username_snapshot, bank_name, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
         if (hasFinish) q = q.lte("txn_at_opened", eISO!);
         const { data, error } = await q;
         if (error) console.error(error);
+        for (const it of (data ?? []) as any[]) if (!it.bank_name) it.bank_name = "-";
         return (data as WithdrawalRow[]) ?? [];
       })(),
       // Pending Deposits
@@ -344,7 +347,7 @@ export default function BankMutationsTable() {
     for (const r of depResp) {
       if (fCat && fCat !== "Depo") continue;
       const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
+      const bname = r.bank_name ?? unameMap[uname] ?? "-";
       result.push({
         bankId: r.bank_id,
         tsClick: r.txn_at_opened,
@@ -404,7 +407,7 @@ export default function BankMutationsTable() {
     // WD (+ Biaya Transfer bila ada) — Opsi A
     for (const r of wdResp) {
       const uname = r.username_snapshot ?? "-";
-      const bname = unameMap[uname] ?? "-";
+      const bname = r.bank_name ?? unameMap[uname] ?? "-";
       const gross = Number(r.amount_gross || 0);
       const fee = Number(r.transfer_fee_amount || 0);
 
@@ -604,7 +607,7 @@ export default function BankMutationsTable() {
       Array(filtered.length).fill(0).map(() => ({ start: null, finish: null }));
 
     for (const key of groupOrder) {
-      const [bankIdStr, ts] = key.split("|");
+      const [bankIdStr] = key.split("|");
       const bankId = Number(bankIdStr);
       const idxs = groupMap.get(key)!;
 
@@ -636,7 +639,6 @@ export default function BankMutationsTable() {
         state = finish;
       }
 
-      // setelah grup selesai, state (finish terakhir) harus = afterVal
       // current untuk bank ini menjadi saldo sebelum grup (untuk grup yang lebih lama di bawahnya)
       current.set(bankId, beforeGroup);
     }
