@@ -28,6 +28,7 @@ type DepositRow = {
   txn_at_opened: string; // waktu klik
   txn_at_final: string;  // waktu dipilih
   created_by: string | null;
+  created_by_name: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -42,6 +43,7 @@ type WithdrawalRow = {
   txn_at_opened: string;
   txn_at_final: string;
   created_by: string | null;
+  created_by_name: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -57,6 +59,7 @@ type PendingDepositRow = {
   assigned_username_snapshot: string | null;
   assigned_at: string | null;
   created_by: string | null;
+  created_by_name: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -71,6 +74,7 @@ type InterbankRow = {
   to_txn_at: string;
   created_at: string;
   created_by: string | null;
+  created_by_name: string | null;
   from_balance_before?: number | null;
   from_balance_after?: number | null;   // biasanya belum potong fee
   to_balance_before?: number | null;
@@ -85,6 +89,7 @@ type AdjustmentRow = {
   txn_at_final: string;
   created_at: string;
   created_by: string | null;
+  created_by_name: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -98,6 +103,7 @@ type ExpenseRow = {
   txn_at_final: string;
   created_at: string;
   created_by: string | null;
+  created_by_name: string | null;
   balance_before?: number | null;
   balance_after?: number | null;
 };
@@ -220,7 +226,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("deposits")
           .select(
-            "id, bank_id, amount_net, username_snapshot, bank_name, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_net, username_snapshot, bank_name, lead_bank_snapshot, lead_accno_snapshot, txn_at_opened, txn_at_final, created_by, created_by_name, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
@@ -237,7 +243,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("withdrawals")
           .select(
-            "id, bank_id, amount_gross, transfer_fee_amount, username_snapshot, bank_name, txn_at_opened, txn_at_final, created_by, balance_before, balance_after"
+            "id, bank_id, amount_gross, transfer_fee_amount, username_snapshot, bank_name, txn_at_opened, txn_at_final, created_by, created_by_name, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("txn_at_opened", sISO!);
@@ -252,7 +258,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("pending_deposits")
           .select(
-            "id, bank_id, amount_net, description, txn_at_opened, txn_at_final, is_assigned, assigned_username_snapshot, assigned_at, created_by, balance_before, balance_after"
+            "id, bank_id, amount_net, description, txn_at_opened, txn_at_final, is_assigned, assigned_username_snapshot, assigned_at, created_by, created_by_name, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         // "Pending DP" → filter pakai txn_at_opened; "Depo dari PDP (assign)" → filter assigned_at saat mapping.
@@ -267,7 +273,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("interbank_transfers")
           .select(
-            "id, bank_from_id, bank_to_id, amount_gross, fee_amount, from_txn_at, to_txn_at, created_at, created_by, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
+            "id, bank_from_id, bank_to_id, amount_gross, fee_amount, from_txn_at, to_txn_at, created_at, created_by, created_by_name, from_balance_before, from_balance_after, to_balance_before, to_balance_after"
           );
         if (hasStart) q = q.gte("created_at", sISO!); // waktu click
         if (hasFinish) q = q.lte("created_at", eISO!);
@@ -280,7 +286,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("bank_adjustments")
           .select(
-            "id, bank_id, amount_delta, description, txn_at_final, created_at, created_by, balance_before, balance_after"
+            "id, bank_id, amount_delta, description, txn_at_final, created_at, created_by, created_by_name, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("created_at", sISO!);
@@ -294,7 +300,7 @@ export default function BankMutationsTable() {
         let q = supabase
           .from("bank_expenses")
           .select(
-            "id, bank_id, amount, category_code, description, txn_at_final, created_at, created_by, balance_before, balance_after"
+            "id, bank_id, amount, category_code, description, txn_at_final, created_at, created_by, created_by_name, balance_before, balance_after"
           );
         if (bankIdFilter) q = q.eq("bank_id", bankIdFilter);
         if (hasStart) q = q.gte("created_at", sISO!);
@@ -304,24 +310,6 @@ export default function BankMutationsTable() {
         return (data as ExpenseRow[]) ?? [];
       })(),
     ]);
-
-    // ===== ambil nama "by" (created_by -> full_name) =====
-    const byIds = new Set<string>();
-    [depResp, wdResp, pdpResp, ttResp, adjResp, expResp].forEach((arr: any[]) =>
-      arr.forEach((x) => x?.created_by && byIds.add(x.created_by))
-    );
-
-    const byMap: Record<string, string> = {};
-    if (byIds.size) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", Array.from(byIds));
-      (profs as ProfileLite[] | null)?.forEach((p) => {
-        byMap[p.user_id] = p.full_name ?? p.user_id.slice(0, 8);
-      });
-    }
-    setWhoMap(byMap);
 
     // ===== ambil bank_name player utk DP/WD/Depo dari PDP =====
     const usernames = new Set<string>();
@@ -358,7 +346,7 @@ export default function BankMutationsTable() {
         desc: "—",
         amount: +Number(r.amount_net || 0),
         affectsBalance: true,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        by: r.created_by_name ?? "-",
       });
     }
 
@@ -381,7 +369,7 @@ export default function BankMutationsTable() {
         desc: "—",
         amount: +Number(r.amount_net || 0),
         affectsBalance: true,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        by: r.created_by_name ?? "-",
       });
     }
 
@@ -400,7 +388,7 @@ export default function BankMutationsTable() {
         start: r.balance_before ?? null,
         finish: r.balance_after ?? null,
         affectsBalance: false,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        by: r.created_by_name ?? "-",
       });
     }
 
@@ -423,7 +411,7 @@ export default function BankMutationsTable() {
           desc: "—",
           amount: -fee,
           affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
+          by: r.created_by_name ?? "-",
         });
       }
 
@@ -439,7 +427,7 @@ export default function BankMutationsTable() {
           desc: "—",
           amount: -gross,
           affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
+          by: r.created_by_name ?? "-",
         });
       }
     }
@@ -468,7 +456,7 @@ export default function BankMutationsTable() {
           desc: "—",
           amount: +gross,
           affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
+          by: r.created_by_name ?? "-",
         });
       }
 
@@ -484,7 +472,7 @@ export default function BankMutationsTable() {
           desc: "—",
           amount: -fee,
           affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
+          by: r.created_by_name ?? "-",
         });
       }
 
@@ -501,7 +489,7 @@ export default function BankMutationsTable() {
           desc: "—",
           amount: -gross,
           affectsBalance: true,
-          by: r.created_by ? byMap[r.created_by] : "-",
+          by: r.created_by_name ?? "-",
         });
       }
     }
@@ -519,7 +507,7 @@ export default function BankMutationsTable() {
         desc: r.description ?? "—",
         amount: Number(r.amount_delta || 0),
         affectsBalance: true,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        by: r.created_by_name ?? "-",
       });
     }
 
@@ -536,7 +524,7 @@ export default function BankMutationsTable() {
         desc: r.description ?? "—",
         amount: Number(r.amount || 0), // biasanya sudah negatif
         affectsBalance: true,
-        by: r.created_by ? byMap[r.created_by] : "-",
+        by: r.created_by_name ?? "-",
       });
     }
 
