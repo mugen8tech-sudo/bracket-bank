@@ -17,6 +17,7 @@ type WithdrawalRow = {
   amount_net: number;
   txn_at_final: string;
   created_by: string | null;
+  created_by_name: string | null;
   is_deleted: boolean;
 };
 
@@ -75,7 +76,7 @@ export default function WithdrawalsTable() {
   };
 
   const buildQuery = () => {
-    let q = supabase.from("withdrawals").select("*",{count:"exact"}).order("txn_at_final",{ascending:false});
+    let q = supabase.from("withdrawals").select("*, created_by_name",{count:"exact"}).order("txn_at_final",{ascending:false});
     if (fLead.trim()) q = q.ilike("lead_name_snapshot", `%${fLead.trim()}%`);
     if (fUser.trim()) q = q.ilike("username_snapshot", `%${fUser.trim()}%`);
     if (fStart) q = q.gte("txn_at_final", startOfDayJakartaISO(fStart));
@@ -98,17 +99,6 @@ export default function WithdrawalsTable() {
     setRows(list);
     setTotal(count ?? 0);
     setPage(pageToLoad);
-
-    const uids = Array.from(new Set(list.map(x=>x.created_by).filter(Boolean))) as string[];
-    if (uids.length) {
-      const { data: pf } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", uids);
-      const map: Record<string,string> = {};
-      (pf as ProfileLite[] | null)?.forEach(p => { map[p.user_id] = p.full_name ?? p.user_id; });
-      setWhoMap(map);
-    } else setWhoMap({});
   };
 
   useEffect(()=>{ loadToday(); }, []);
@@ -220,7 +210,7 @@ export default function WithdrawalsTable() {
                   <td>{r.username_snapshot}</td>
                   <td className="text-left">{formatAmount(r.amount_gross)}</td>
                   <td>{new Date(r.txn_at_final).toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</td>
-                  <td>{r.created_by ? (whoMap[r.created_by] ?? r.created_by) : "-"}</td>
+                  <td>{r.created_by_name ?? r.created_by ?? "-"}</td>
                   <td>{r.is_deleted ? "YES" : "NO"}</td>
                   <td className="space-x-2">
                     <Link href={`/withdrawals/${r.id}`} className="rounded bg-gray-100 px-3 py-1">Detail</Link>
