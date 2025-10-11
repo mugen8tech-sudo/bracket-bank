@@ -16,6 +16,7 @@ type TT = {
   description: string | null;
   created_at: string;
   created_by: string | null;
+  created_by_name: string | null;
 };
 
 type BankLite = {
@@ -88,7 +89,7 @@ export default function InterbankTransfersTable() {
 
     // ambil profile 'by'
     const ids = Array.from(
-      new Set((data ?? []).map((r) => r.created_by).filter(Boolean) as string[])
+      new Set((data ?? []).map((r) => r.created_by_name).filter(Boolean) as string[])
     );
     let map: Record<string, string> = {};
     if (ids.length) {
@@ -174,7 +175,7 @@ export default function InterbankTransfersTable() {
                   <td>
                     {new Date(r.created_at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
                   </td>
-                  <td>{r.created_by ? (byMap[r.created_by] ?? r.created_by.slice(0,8)) : "-"}</td>
+                  <td>{r.created_by_name ?? r.created_by ?? "-"}</td>
                   <td>
                     <a href={`/interbank-transfer/${r.id}`} className="rounded bg-gray-100 px-3 py-1 inline-block">Detail</a>
                   </td>
