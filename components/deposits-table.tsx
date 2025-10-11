@@ -17,10 +17,9 @@ type DepositRow = {
   amount_net: number;
   txn_at_final: string;
   created_by: string | null;
+  created_by_name: string | null; // <-- computed column dari DB
   is_deleted: boolean;
 };
-
-type ProfileLite = { user_id: string; full_name: string | null };
 
 const PAGE_SIZE = 50;
 
@@ -53,9 +52,6 @@ export default function DepositsTable() {
   const [fFinish, setFFinish] = useState("");
   const [fDeleted, setFDeleted] = useState<"ALL" | "YES" | "NO">("ALL");
 
-  // who created mapping
-  const [whoMap, setWhoMap] = useState<Record<string, string>>({});
-
   // today summary
   const loadToday = async () => {
     const now = new Date();
@@ -85,7 +81,8 @@ export default function DepositsTable() {
   const buildQuery = () => {
     let q = supabase
       .from("deposits")
-      .select("*", { count: "exact" })
+      // minta computed column 'created_by_name'
+      .select("*, created_by_name", { count: "exact" })
       .order("txn_at_final", { ascending: false });
 
     if (fLead.trim()) q = q.ilike("lead_name_snapshot", `%${fLead.trim()}%`);
@@ -114,24 +111,6 @@ export default function DepositsTable() {
     setRows(list);
     setTotal(count ?? 0);
     setPage(pageToLoad);
-
-    // map who (created_by → full_name)
-    const uids = Array.from(
-      new Set(list.map((x) => x.created_by).filter(Boolean))
-    ) as string[];
-    if (uids.length) {
-      const { data: pf } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, created_by_name")
-        .in("user_id", uids);
-      const map: Record<string, string> = {};
-      (pf as ProfileLite[] | null)?.forEach((p) => {
-        map[p.user_id] = p.full_name ?? p.user_id;
-      });
-      setWhoMap(map);
-    } else {
-      setWhoMap({});
-    }
   };
 
   useEffect(() => {
@@ -316,9 +295,7 @@ export default function DepositsTable() {
                       timeZone: "Asia/Jakarta",
                     })}
                   </td>
-                  <td>
-                    {r.created_by ? whoMap[r.created_by] ?? r.created_by : "-"}
-                  </td>
+                  <td>{r.created_by_name ?? r.created_by ?? "-"}</td>
                   <td>{r.is_deleted ? "YES" : "NO"}</td>
                   <td className="space-x-2">
                     <Link
